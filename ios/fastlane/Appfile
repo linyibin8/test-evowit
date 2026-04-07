@@ -1,0 +1,4 @@
+app_identifier("com.we555.test-evowit")
+apple_id(ENV["APPLE_ID"] || "3972104921@qq.com")
+team_id(ENV["APPLE_TEAM_ID"] || "76PHSCHPCK")
+

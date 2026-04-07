@@ -1,0 +1,60 @@
+default_platform(:ios)
+
+def app_store_connect_api_key_if_available
+  key_id = ENV["APP_STORE_CONNECT_KEY_ID"]
+  issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"]
+  key_path = ENV["APP_STORE_CONNECT_KEY_PATH"]
+
+  return nil if key_id.to_s.empty? || issuer_id.to_s.empty? || key_path.to_s.empty?
+
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: key_path,
+    in_house: false
+  )
+end
+
+platform :ios do
+  desc "Build and upload test-evowit to TestFlight"
+  lane :beta do
+    connect_api_key = app_store_connect_api_key_if_available
+    backend_base_url = ENV["BACKEND_BASE_URL"].to_s.empty? ? "http://120.197.118.22:21080" : ENV["BACKEND_BASE_URL"]
+    groups = ENV["TESTFLIGHT_GROUPS"].to_s.split(",").map(&:strip).reject(&:empty?)
+
+    sh("bash ../scripts/install_xcodegen.sh")
+    sh("export PATH=$HOME/.local/bin:$HOME/bin/bin:$PATH && xcodegen generate")
+
+    update_info_plist(
+      plist_path: "TestEvowit/Info.plist",
+      block: proc do |plist|
+        plist["BACKEND_BASE_URL"] = backend_base_url
+      end
+    )
+
+    build_app(
+      project: "test-evowit.xcodeproj",
+      scheme: "TestEvowit",
+      clean: true,
+      export_method: "app-store",
+      export_xcargs: "-allowProvisioningUpdates",
+      xcargs: "DEVELOPMENT_TEAM=#{ENV["APPLE_TEAM_ID"] || "76PHSCHPCK"} CODE_SIGN_STYLE=Automatic"
+    )
+
+    upload_options = {
+      username: ENV["APPLE_ID"],
+      app_identifier: "com.we555.test-evowit",
+      skip_waiting_for_build_processing: false
+    }
+
+    upload_options[:api_key] = connect_api_key unless connect_api_key.nil?
+
+    if groups.any?
+      upload_options[:distribute_external] = true
+      upload_options[:groups] = groups
+      upload_options[:notify_external_testers] = true
+    end
+
+    upload_to_testflight(upload_options)
+  end
+end

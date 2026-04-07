@@ -1,0 +1,8 @@
+import OpenAI from "openai";
+import { config } from "./config.js";
+
+export const openai = new OpenAI({
+  apiKey: config.openAIApiKey,
+  baseURL: config.openAIBaseUrl
+});
+
