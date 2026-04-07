@@ -19,7 +19,7 @@ platform :ios do
   desc "Build and upload test-evowit to TestFlight"
   lane :beta do
     connect_api_key = app_store_connect_api_key_if_available
-    backend_base_url = ENV["BACKEND_BASE_URL"].to_s.empty? ? "http://120.197.118.22:21080" : ENV["BACKEND_BASE_URL"]
+    backend_base_url = ENV["BACKEND_BASE_URL"].to_s.empty? ? "http://192.168.0.124:21080" : ENV["BACKEND_BASE_URL"]
     groups = ENV["TESTFLIGHT_GROUPS"].to_s.split(",").map(&:strip).reject(&:empty?)
 
     sh("bash ../scripts/install_xcodegen.sh")

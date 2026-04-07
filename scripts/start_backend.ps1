@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 Push-Location $backendDir
 try {
     if (-not (Test-Path ".env")) {
-        throw "backend\\.env 不存在，请先按 .env.example 配置 OPENAI_API_KEY。"
+        throw "backend/.env is missing. Copy backend/.env.example and configure OPENAI_API_KEY first."
     }
 
     npm install
