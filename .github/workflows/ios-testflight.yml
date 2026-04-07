@@ -5,6 +5,10 @@ on:
   push:
     branches: ["main"]
 
+concurrency:
+  group: ios-testflight-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-upload:
     runs-on: [self-hosted, macOS, ARM64]
