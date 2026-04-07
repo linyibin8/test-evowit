@@ -1,4 +1,9 @@
+require "shellwords"
+
 default_platform(:ios)
+
+project_root = File.expand_path("..", __dir__)
+repo_root = File.expand_path("../..", __dir__)
 
 def app_store_connect_api_key_if_available
   key_id = ENV["APP_STORE_CONNECT_KEY_ID"]
@@ -19,21 +24,14 @@ platform :ios do
   desc "Build and upload test-evowit to TestFlight"
   lane :beta do
     connect_api_key = app_store_connect_api_key_if_available
-    backend_base_url = ENV["BACKEND_BASE_URL"].to_s.empty? ? "http://192.168.0.124:21080" : ENV["BACKEND_BASE_URL"]
+    backend_base_url = ENV["BACKEND_BASE_URL"].to_s.empty? ? "http://120.197.118.22:21080" : ENV["BACKEND_BASE_URL"]
     groups = ENV["TESTFLIGHT_GROUPS"].to_s.split(",").map(&:strip).reject(&:empty?)
 
-    sh("bash ../scripts/install_xcodegen.sh")
-    sh("export PATH=$HOME/.local/bin:$HOME/bin/bin:$PATH && xcodegen generate")
-
-    update_info_plist(
-      plist_path: "TestEvowit/Info.plist",
-      block: proc do |plist|
-        plist["BACKEND_BASE_URL"] = backend_base_url
-      end
-    )
+    sh("bash #{File.join(repo_root, 'scripts', 'install_xcodegen.sh').shellescape}")
+    sh("cd #{project_root.shellescape} && export PATH=$HOME/.local/bin:$HOME/bin/bin:$PATH && xcodegen generate")
 
     build_app(
-      project: "test-evowit.xcodeproj",
+      project: File.join(project_root, "test-evowit.xcodeproj"),
       scheme: "TestEvowit",
       clean: true,
       export_method: "app-store",
