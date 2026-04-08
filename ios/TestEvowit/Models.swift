@@ -45,17 +45,32 @@ enum GradeBand: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
-struct SolveProblemRequest: Codable {
+struct SolveClientTrace: Codable {
+    let source: String?
+    let recognizer: String?
+    let ocrDurationMs: Int?
+    let recognizedLineCount: Int?
+    let recognizedTextLength: Int?
+    let imageWidth: Int?
+    let imageHeight: Int?
+    let imageBytes: Int?
+    let appVersion: String?
+    let buildNumber: String?
+    let clientStartedAt: String?
+}
+
+struct SolveProblemRequest {
     let sessionId: String?
     let subject: String
     let gradeBand: String
     let answerStyle: String
     let questionHint: String?
     let recognizedText: String?
-    let imageBase64: String
+    let clientTrace: SolveClientTrace?
 }
 
 struct SolveProblemResponse: Codable, Identifiable {
+    let traceId: String
     let sessionId: String
     let problemText: String
     let cleanedQuestion: String
@@ -74,8 +89,21 @@ struct SolveProblemResponse: Codable, Identifiable {
     let retakeReason: String
     let sessionSummary: String
     let turnCount: Int
+    let pipelineRoute: String
+    let usedModel: String
+    let processingMs: Int
 
-    var id: String { "\(sessionId)-\(turnCount)" }
+    var id: String { "\(sessionId)-\(turnCount)-\(traceId)" }
+
+    var pipelineRouteTitle: String {
+        switch pipelineRoute {
+        case "local": return "本地快速求解"
+        case "model_text_only": return "OCR 文本直解"
+        case "model_vision": return "图片视觉解题"
+        case "heuristic_fallback": return "本地兜底模式"
+        default: return pipelineRoute
+        }
+    }
 }
 
 struct SolveHistoryItem: Identifiable {

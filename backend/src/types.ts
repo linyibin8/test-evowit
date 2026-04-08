@@ -2,6 +2,20 @@ export type ProblemSubject = "math" | "chinese" | "english" | "science" | "gener
 
 export type AnswerStyle = "guided" | "detailed" | "direct";
 
+export interface SolveClientTrace {
+  source?: "camera" | "photoLibrary";
+  recognizer?: string;
+  ocrDurationMs?: number;
+  recognizedLineCount?: number;
+  recognizedTextLength?: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageBytes?: number;
+  appVersion?: string;
+  buildNumber?: string;
+  clientStartedAt?: string;
+}
+
 export interface SolveProblemPayload {
   sessionId?: string;
   subject: ProblemSubject;
@@ -10,6 +24,7 @@ export interface SolveProblemPayload {
   questionHint?: string;
   recognizedText?: string;
   imageBase64: string;
+  clientTrace?: SolveClientTrace;
 }
 
 export interface SolveProblemResult {
@@ -30,10 +45,20 @@ export interface SolveProblemResult {
   retakeReason: string;
 }
 
+export interface SolveProblemExecution {
+  result: SolveProblemResult;
+  pipelineRoute: "local" | "model_text_only" | "model_vision" | "heuristic_fallback";
+  usedModel: string;
+}
+
 export interface AnalyzeSolveResponse extends SolveProblemResult {
+  traceId: string;
   sessionId: string;
   sessionSummary: string;
   turnCount: number;
+  pipelineRoute: string;
+  usedModel: string;
+  processingMs: number;
 }
 
 export interface SessionTurn {

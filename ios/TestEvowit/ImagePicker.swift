@@ -17,10 +17,10 @@ enum PickerSource: String, Identifiable {
 
 struct ImagePicker: UIViewControllerRepresentable {
     let source: PickerSource
-    let onImagePicked: (UIImage) -> Void
+    let onImagePicked: (UIImage, PickerSource) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onImagePicked: onImagePicked)
+        Coordinator(source: source, onImagePicked: onImagePicked)
     }
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -34,9 +34,11 @@ struct ImagePicker: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
 
     final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
-        let onImagePicked: (UIImage) -> Void
+        let source: PickerSource
+        let onImagePicked: (UIImage, PickerSource) -> Void
 
-        init(onImagePicked: @escaping (UIImage) -> Void) {
+        init(source: PickerSource, onImagePicked: @escaping (UIImage, PickerSource) -> Void) {
+            self.source = source
             self.onImagePicked = onImagePicked
         }
 
@@ -45,7 +47,7 @@ struct ImagePicker: UIViewControllerRepresentable {
             didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
         ) {
             if let image = info[.originalImage] as? UIImage {
-                onImagePicked(image)
+                onImagePicked(image, source)
             }
             picker.dismiss(animated: true)
         }
@@ -55,4 +57,3 @@ struct ImagePicker: UIViewControllerRepresentable {
         }
     }
 }
-

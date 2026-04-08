@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>test-evowit Trace 调试页</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Trace Debug</p>
+      <h1>查看每一道题在服务端的完整处理过程。</h1>
+      <p class="lede">
+        左侧是最近请求，右侧是当前 trace 详情。你可以看到 OCR 文本、路由决策、模型上下文、模型尝试记录和最终输出。
+        <a href="/">返回解题页</a>
+      </p>
+    </section>
+
+    <section class="trace-layout">
+      <section class="solver-form trace-list" id="trace-list">
+        <p class="placeholder">正在加载最近 trace...</p>
+      </section>
+      <section class="result trace-detail" id="trace-detail">
+        <p class="placeholder">请选择一条 trace 查看详情。</p>
+      </section>
+    </section>
+  </main>
+
+  <script src="/debug.js"></script>
+</body>
+</html>

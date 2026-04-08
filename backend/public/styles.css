@@ -118,8 +118,26 @@ button {
   color: var(--muted);
 }
 
+.hero a {
+  color: var(--accent-deep);
+}
+
 .result-card h2 {
   margin-top: 0;
+}
+
+.meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.meta-strip span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(26, 138, 122, 0.1);
+  font-size: 0.92rem;
 }
 
 .grid {
@@ -164,10 +182,46 @@ pre {
   margin: 0;
 }
 
+.trace-layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 22px;
+}
+
+.trace-list {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.trace-item {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink);
+}
+
+.trace-item strong {
+  font-size: 0.95rem;
+}
+
+.trace-item small {
+  color: var(--muted);
+}
+
+.trace-detail {
+  display: grid;
+  gap: 14px;
+}
+
 @media (max-width: 900px) {
   .panel,
-  .grid {
+  .grid,
+  .trace-layout {
     grid-template-columns: 1fr;
   }
 }
-

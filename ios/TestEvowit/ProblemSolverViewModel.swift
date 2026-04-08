@@ -15,7 +15,10 @@ final class ProblemSolverViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let apiClient = APIClient()
+    private let isoFormatter = ISO8601DateFormatter()
     private var sessionId: String?
+    private var lastPickerSource: PickerSource?
+    private var recognitionResult = TextRecognitionResult(text: "", durationMs: 0, lineCount: 0)
 
     func solve() async {
         guard let selectedImage else {
@@ -31,6 +34,7 @@ final class ProblemSolverViewModel: ObservableObject {
         isSubmitting = true
         errorMessage = nil
 
+        let cgImage = selectedImage.cgImage
         let request = SolveProblemRequest(
             sessionId: sessionId,
             subject: selectedSubject.rawValue,
@@ -38,11 +42,23 @@ final class ProblemSolverViewModel: ObservableObject {
             answerStyle: answerStyle.rawValue,
             questionHint: questionHint.isEmpty ? nil : questionHint,
             recognizedText: recognizedText.isEmpty ? nil : recognizedText,
-            imageBase64: jpegData.base64EncodedString()
+            clientTrace: SolveClientTrace(
+                source: lastPickerSource?.rawValue,
+                recognizer: "vision.VNRecognizeTextRequest",
+                ocrDurationMs: recognitionResult.durationMs,
+                recognizedLineCount: recognitionResult.lineCount,
+                recognizedTextLength: recognizedText.count,
+                imageWidth: cgImage?.width,
+                imageHeight: cgImage?.height,
+                imageBytes: jpegData.count,
+                appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                buildNumber: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+                clientStartedAt: isoFormatter.string(from: Date())
+            )
         )
 
         do {
-            let response = try await apiClient.solve(request)
+            let response = try await apiClient.solve(request, imageData: jpegData)
             latestResult = response
             sessionId = response.sessionId
 
@@ -64,11 +80,17 @@ final class ProblemSolverViewModel: ObservableObject {
         isSubmitting = false
     }
 
-    func setImage(_ image: UIImage) {
+    func setImage(_ image: UIImage, source: PickerSource) {
         selectedImage = image
+        latestResult = nil
         errorMessage = nil
+        lastPickerSource = source
+        recognitionResult = TextRecognitionResult(text: "", durationMs: 0, lineCount: 0)
+
         Task {
-            recognizedText = await TextRecognizer.recognizeText(in: image)
+            let result = await TextRecognizer.recognizeText(in: image)
+            recognitionResult = result
+            recognizedText = result.text
         }
     }
 
@@ -79,6 +101,7 @@ final class ProblemSolverViewModel: ObservableObject {
         recognizedText = ""
         errorMessage = nil
         sessionId = nil
+        lastPickerSource = nil
+        recognitionResult = TextRecognitionResult(text: "", durationMs: 0, lineCount: 0)
     }
 }
-

@@ -34,8 +34,8 @@ struct ContentView: View {
             }
             .navigationTitle("test-evowit")
             .sheet(item: $activePickerSource) { source in
-                ImagePicker(source: source) { image in
-                    viewModel.setImage(image)
+                ImagePicker(source: source) { image, pickerSource in
+                    viewModel.setImage(image, source: pickerSource)
                 }
             }
         }
@@ -141,7 +141,7 @@ struct ContentView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("识别到的题干")
+                Text("本地 OCR 识别的题干")
                     .font(.headline)
                 TextEditor(text: $viewModel.recognizedText)
                     .frame(minHeight: 120)
@@ -186,6 +186,17 @@ struct ContentView: View {
             Text("解析结果")
                 .font(.title2.bold())
 
+            infoCard(
+                title: "本次处理链路",
+                body: """
+                路由：\(result.pipelineRouteTitle)
+                模型：\(result.usedModel)
+                耗时：\(result.processingMs) ms
+                Trace ID：\(result.traceId)
+                """,
+                accent: .brown
+            )
+
             if result.shouldRetakePhoto {
                 infoCard(title: "重拍建议", body: result.retakeReason, accent: .orange)
             }
@@ -198,6 +209,7 @@ struct ContentView: View {
             tagCard(title: "易错点", items: result.commonMistakes)
             infoCard(title: "继续练习", body: result.followUpPractice, accent: .green)
             infoCard(title: "鼓励语", body: result.encouragement, accent: .pink)
+            infoCard(title: "最近会话摘要", body: result.sessionSummary, accent: .mint)
         }
         .padding(20)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -257,12 +269,18 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.headline)
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                HStack(alignment: .top, spacing: 10) {
-                    Text("\(index + 1).")
-                        .fontWeight(.semibold)
-                    Text(item)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+
+            if items.isEmpty {
+                Text("暂无")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\(index + 1).")
+                            .fontWeight(.semibold)
+                        Text(item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
         }
@@ -274,13 +292,19 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.headline)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
-                ForEach(items, id: \.self) { item in
-                    Text(item)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color.teal.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            if items.isEmpty {
+                Text("暂无")
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
+                    ForEach(items, id: \.self) { item in
+                        Text(item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color.teal.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
                 }
             }
         }

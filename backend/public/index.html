@@ -10,9 +10,10 @@
   <main class="page">
     <section class="hero">
       <p class="eyebrow">test-evowit Demo</p>
-      <h1>拍一张题目，拿到答案、步骤和讲解。</h1>
+      <h1>拍一张题目，拿到答案、步骤和完整讲解。</h1>
       <p class="lede">
-        这是给 iPhone 端配套的调试页。你可以先上传题目图片，确认后端识题和讲解质量，再发布 TestFlight。
+        这是给 iPhone 学生端配套的调试页面。你可以先上传题目图片，确认后端识题和讲解质量，
+        也可以打开 <a href="/debug.html">Trace 日志页</a> 查看每一题到底走了哪条链路。
       </p>
     </section>
 
@@ -50,7 +51,7 @@
 
         <label>
           手动题干
-          <textarea id="recognizedText" rows="4" placeholder="如果模型服务限流，这里可以直接贴题目文字，走离线备援解题。"></textarea>
+          <textarea id="recognizedText" rows="4" placeholder="如果想跳过 OCR，或者想直接验证文本链路，可以把题干粘贴在这里。"></textarea>
         </label>
 
         <label>
