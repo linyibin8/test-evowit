@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 import jwt
 import requests
@@ -153,7 +154,7 @@ class AppStoreClient:
         return self.request("POST", "/betaAppReviewSubmissions", payload=payload).get("data")
 
 
-def choose_build(builds_payload: dict, build_version: str | None, short_version: str | None):
+def choose_build(builds_payload: dict, build_version: Optional[str], short_version: Optional[str]):
     builds = builds_payload.get("data", [])
     included = builds_payload.get("included", [])
     pre_release_versions = {
