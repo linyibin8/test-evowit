@@ -23,7 +23,7 @@ on:
 
 jobs:
   distribute:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     env:
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -32,18 +32,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Install dependencies
-        run: python -m pip install --quiet pyjwt requests cryptography
+        run: python3 -m pip install --quiet pyjwt requests cryptography
 
       - name: Prepare App Store Connect key
         run: |
-          key_path="${RUNNER_TEMP}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
-          printf '%s' "${APP_STORE_CONNECT_PRIVATE_KEY}" > "${key_path}"
-          echo "APP_STORE_CONNECT_KEY_PATH=${key_path}" >> "${GITHUB_ENV}"
+          if [[ -n "${APP_STORE_CONNECT_PRIVATE_KEY}" && -n "${APP_STORE_CONNECT_KEY_ID}" ]]; then
+            key_path="${RUNNER_TEMP}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+            printf '%s' "${APP_STORE_CONNECT_PRIVATE_KEY}" > "${key_path}"
+            echo "APP_STORE_CONNECT_KEY_PATH=${key_path}" >> "${GITHUB_ENV}"
+          elif [[ -n "${APP_STORE_CONNECT_KEY_ID}" && -f "${HOME}/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" ]]; then
+            echo "APP_STORE_CONNECT_KEY_PATH=${HOME}/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" >> "${GITHUB_ENV}"
+          fi
 
       - name: Distribute build to beta groups
         env:
@@ -51,10 +51,16 @@ jobs:
           INPUT_BUILD_VERSION: ${{ github.event.inputs.build_version }}
           INPUT_SHORT_VERSION: ${{ github.event.inputs.short_version }}
         run: |
-          args=(scripts/distribute_testflight_build.py --bundle-id com.we555.test-evowit --build-version "${INPUT_BUILD_VERSION}" --short-version "${INPUT_SHORT_VERSION}")
+          args=(scripts/distribute_testflight_build.py --bundle-id com.we555.test-evowit)
+          if [[ -n "${INPUT_BUILD_VERSION}" ]]; then
+            args+=(--build-version "${INPUT_BUILD_VERSION}")
+          fi
+          if [[ -n "${INPUT_SHORT_VERSION}" ]]; then
+            args+=(--short-version "${INPUT_SHORT_VERSION}")
+          fi
           if [[ "${INPUT_ALL_GROUPS}" == "true" ]]; then
             args+=(--all-groups)
           elif [[ -n "${TESTFLIGHT_GROUPS}" ]]; then
             args+=(--group-names "${TESTFLIGHT_GROUPS}")
           fi
-          python "${args[@]}"
+          python3 "${args[@]}"
