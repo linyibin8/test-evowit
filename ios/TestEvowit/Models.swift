@@ -29,7 +29,7 @@ enum AnswerStyle: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         switch self {
-        case .guided: return "启发式"
+        case .guided: return "启发讲解"
         case .detailed: return "详细解析"
         case .direct: return "直接答案"
         }
@@ -48,6 +48,10 @@ enum GradeBand: String, CaseIterable, Identifiable, Codable {
 struct SolveClientTrace: Codable {
     let source: String?
     let recognizer: String?
+    let preprocessProfile: String?
+    let cropApplied: Bool?
+    let ocrQuality: String?
+    let ocrQualityReason: String?
     let ocrDurationMs: Int?
     let recognizedLineCount: Int?
     let recognizedTextLength: Int?

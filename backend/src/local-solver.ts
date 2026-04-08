@@ -7,15 +7,15 @@ interface LinearExpression {
 
 export function normalizeText(text: string) {
   return text
-    .replace(/[，。；：、]/g, " ")
+    .replace(/[，。；：]/g, " ")
     .replace(/[＝﹦]/g, "=")
-    .replace(/[×xX]/g, "x")
+    .replace(/[脳xX×]/g, "x")
     .replace(/[÷]/g, "/")
     .replace(/[（]/g, "(")
     .replace(/[）]/g, ")")
     .replace(/[＋]/g, "+")
     .replace(/[－—–]/g, "-")
-    .replace(/[？?]/g, "")
+    .replace(/[？]/g, "")
     .replace(/\r/g, "\n")
     .replace(/[^\S\n]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
@@ -105,7 +105,6 @@ function solveLinearEquation(text: string): SolveProblemResult | null {
 
   const coefficient = left.coefficient - right.coefficient;
   const constant = right.constant - left.constant;
-
   if (coefficient === 0) {
     return null;
   }
@@ -122,15 +121,15 @@ function solveLinearEquation(text: string): SolveProblemResult | null {
     answer: `x = ${cleanAnswer}`,
     keySteps: [
       `原式：${match}`,
-      `把含 x 的项整理到一边，常数项整理到另一边，得到 ${coefficient}x = ${constant}`,
+      `把含 x 的项整理到一边，把常数项整理到另一边，得到 ${coefficient}x = ${constant}`,
       `两边同时除以 ${coefficient}，得到 x = ${cleanAnswer}`
     ],
-    fullExplanation: `这是一道一元一次方程。先把含 x 的项整理到同一边，再把常数项移到另一边，最后把 x 前面的系数化成 1，就可以得到答案 x = ${cleanAnswer}。`,
+    fullExplanation: `这是一道一元一次方程。先移项，把含 x 的项放到同一边，把常数项放到另一边，再把 x 前面的系数化成 1，就能得到答案 x = ${cleanAnswer}。`,
     knowledgePoints: ["等式两边同时进行相同运算", "移项", "一元一次方程求解"],
-    commonMistakes: ["移项时忘记变号", "最后一步没有除以 x 前面的系数"],
+    commonMistakes: ["移项时忘记变号", "最后没有除以 x 前面的系数"],
     followUpPractice: "继续练习：3x - 7 = 11，求 x。",
     encouragement: "你已经抓住这类题的核心了，再多做几道移项题会更熟练。",
-    confidence: 0.85,
+    confidence: 0.86,
     shouldRetakePhoto: false,
     retakeReason: ""
   };
@@ -171,14 +170,37 @@ function solveArithmetic(text: string): SolveProblemResult | null {
       "按照先乘除后加减的顺序依次计算。",
       `最终结果是 ${answer}。`
     ],
-    fullExplanation: `根据运算顺序，这道题需要先处理乘除，再处理加减，最后可得到结果 ${answer}。`,
+    fullExplanation: `根据运算顺序，这道题需要先处理乘除，再处理加减，最后得到结果 ${answer}。`,
     knowledgePoints: ["四则运算顺序", "括号优先"],
     commonMistakes: ["没有先算乘除", "括号里的内容漏算"],
-    followUpPractice: "继续练习：18 / 3 + 4 * 2 = ?",
+    followUpPractice: "继续练习：8 / 4 + 3 * 2 = ?",
     encouragement: "基础运算越扎实，后面的综合题就会越轻松。",
-    confidence: 0.8,
+    confidence: 0.82,
     shouldRetakePhoto: false,
     retakeReason: ""
+  };
+}
+
+function buildRetakeHeuristicResult(payload: SolveProblemPayload, questionText: string): SolveProblemResult {
+  return {
+    problemText: questionText,
+    cleanedQuestion: questionText,
+    inferredSubject: payload.subject === "math" ? "数学" : "通用",
+    problemType: "需要重新拍题",
+    difficulty: "待识别",
+    answer: "当前图片更像整页作业或题干不完整，直接作答很容易答错。",
+    keySteps: [
+      "已经识别到部分题干。",
+      "但当前内容更像多道题混在一起，建议先裁剪到单题。"
+    ],
+    fullExplanation: "拍照解题最怕整页混题。先把画面裁成只保留一道题，再重新解析，模型才能更稳定地给出正确答案。",
+    knowledgePoints: ["单题拍照", "OCR 识别质量"],
+    commonMistakes: ["整页一起拍", "题干裁不完整", "照片歪斜或反光"],
+    followUpPractice: "先裁到单题后重新识别。",
+    encouragement: "你已经把题拍下来了，再裁一步，解析质量会明显更好。",
+    confidence: 0.25,
+    shouldRetakePhoto: true,
+    retakeReason: "请裁剪到单题后重拍，或手动补充完整题干。"
   };
 }
 
@@ -223,18 +245,24 @@ export function solveWithHeuristics(payload: SolveProblemPayload): SolveProblemR
     return localSolved;
   }
 
+  const lineCount = questionText.split(/\n/).filter(Boolean).length;
+  const numberedQuestionCount = (questionText.match(/(?:^|\n)\s*\d+[.)、．]/g) || []).length;
+  if (lineCount >= 10 || numberedQuestionCount >= 2 || questionText.length >= 180) {
+    return buildRetakeHeuristicResult(payload, questionText);
+  }
+
   return {
     problemText: questionText,
     cleanedQuestion: questionText,
     inferredSubject: payload.subject === "math" ? "数学" : "通用",
     problemType: "待进一步识别",
     difficulty: "未知",
-    answer: "当前本地兜底模式只稳定支持基础数学题。",
+    answer: "当前模型服务暂时不可用，本地兜底模式还不能稳定处理这类题。",
     keySteps: [
       "已经提取到题干文字。",
-      "但当前模型服务不可用或请求失败，本地兜底暂时只支持基础算式和一元一次方程。"
+      "但当前在线模型请求失败，本地兜底暂时只覆盖基础数学题。"
     ],
-    fullExplanation: "如果这是语文、英语、科学或更复杂的数学题，需要在线模型继续处理后才能给出完整解析。",
+    fullExplanation: "如果这是语文、英语、科学或更复杂的数学题，需要在线模型恢复后才能给出完整讲解。",
     knowledgePoints: ["题干识别", "本地兜底解题"],
     commonMistakes: ["照片过斜或裁切过多", "手动补充的题干不完整"],
     followUpPractice: "可以先补充完整题干，然后重新解析。",

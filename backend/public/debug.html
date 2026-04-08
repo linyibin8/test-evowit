@@ -3,26 +3,65 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>test-evowit Trace 调试页</title>
+  <title>test-evowit 实时监控台</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <main class="page">
-    <section class="hero">
-      <p class="eyebrow">Trace Debug</p>
-      <h1>查看每一道题在服务端的完整处理过程。</h1>
-      <p class="lede">
-        左侧是最近请求，右侧是当前 trace 详情。你可以看到 OCR 文本、路由决策、模型上下文、模型尝试记录和最终输出。
-        <a href="/">返回解题页</a>
-      </p>
+    <section class="hero hero-monitor">
+      <div>
+        <p class="eyebrow">Live Monitor</p>
+        <h1>拍题链路实时监控</h1>
+        <p class="lede">
+          这里会动态刷新整个 App 的处理过程：客户端上传、OCR 质量、智能裁题、本地求解、模型上下文、模型重试和最终结果。
+          <a href="/">返回调试解题页</a>
+        </p>
+      </div>
+      <div class="hero-status" id="stream-status">
+        <span class="status-dot pending"></span>
+        <strong>实时连接中</strong>
+      </div>
     </section>
 
-    <section class="trace-layout">
-      <section class="solver-form trace-list" id="trace-list">
-        <p class="placeholder">正在加载最近 trace...</p>
-      </section>
-      <section class="result trace-detail" id="trace-detail">
-        <p class="placeholder">请选择一条 trace 查看详情。</p>
+    <section class="stat-grid" id="summary-cards">
+      <article class="stat-card">
+        <span>加载中</span>
+        <strong>--</strong>
+      </article>
+    </section>
+
+    <section class="toolbar">
+      <div class="toolbar-group">
+        <label class="toolbar-field">
+          <span>筛选状态</span>
+          <select id="status-filter">
+            <option value="all">全部</option>
+            <option value="running">运行中</option>
+            <option value="ok">成功</option>
+            <option value="error">错误</option>
+          </select>
+        </label>
+        <label class="toolbar-field">
+          <span>查找 Trace</span>
+          <input id="trace-search" type="search" placeholder="输入 traceId / 路由 / 模型" />
+        </label>
+      </div>
+      <button id="manual-refresh" type="button">立即刷新</button>
+    </section>
+
+    <section class="monitor-shell">
+      <aside class="trace-list-panel">
+        <div class="panel-head">
+          <h2>最新 Trace</h2>
+          <span id="trace-count" class="muted">0 条</span>
+        </div>
+        <div id="trace-list" class="trace-list">
+          <p class="placeholder">正在加载 trace 列表...</p>
+        </div>
+      </aside>
+
+      <section class="trace-detail-panel" id="trace-detail">
+        <p class="placeholder">请选择一条 trace 查看完整过程。</p>
       </section>
     </section>
   </main>

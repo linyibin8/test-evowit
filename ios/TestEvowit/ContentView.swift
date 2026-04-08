@@ -8,7 +8,7 @@ struct ContentView: View {
         NavigationStack {
             ZStack {
                 LinearGradient(
-                    colors: [Color(red: 0.96, green: 0.93, blue: 0.87), Color(red: 0.98, green: 0.82, blue: 0.67)],
+                    colors: [Color(red: 0.97, green: 0.94, blue: 0.89), Color(red: 0.98, green: 0.84, blue: 0.70)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -18,6 +18,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         heroSection
                         imageSection
+                        recognitionSection
                         optionsSection
                         actionSection
 
@@ -34,8 +35,8 @@ struct ContentView: View {
             }
             .navigationTitle("test-evowit")
             .sheet(item: $activePickerSource) { source in
-                ImagePicker(source: source) { image, pickerSource in
-                    viewModel.setImage(image, source: pickerSource)
+                ImagePicker(source: source) { image, pickerSource, cropApplied in
+                    viewModel.setImage(image, source: pickerSource, cropApplied: cropApplied)
                 }
             }
         }
@@ -43,11 +44,18 @@ struct ContentView: View {
 
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("学生拍照解题")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-            Text("拍下题目，立刻拿到答案、分步解析、知识点和继续练习。")
+            Text("像拍题 APP 一样，先裁单题，再稳稳解答")
+                .font(.system(size: 31, weight: .bold, design: .rounded))
+
+            Text("这一版会先在本地做 OCR，再判断是否交给大模型。为了减少答错，建议每次只拍一道题，拍完先裁到单题。")
                 .font(.headline)
                 .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                statPill(title: "本地先识别", subtitle: "OCR + 质量判断")
+                statPill(title: "单题优先", subtitle: "避免整页混题")
+                statPill(title: "Trace 可追踪", subtitle: "服务端可看全链路")
+            }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,13 +64,13 @@ struct ContentView: View {
 
     private var imageSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("题目图片")
+            Text("第 1 步：拍题并裁成单题")
                 .font(.title3.bold())
 
             ZStack {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color.white.opacity(0.72))
-                    .frame(minHeight: 240)
+                    .fill(Color.white.opacity(0.74))
+                    .frame(minHeight: 260)
 
                 if let image = viewModel.selectedImage {
                     Image(uiImage: image)
@@ -71,14 +79,18 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .padding(12)
                 } else {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 12) {
                         Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 34))
-                        Text("先拍照或从相册导入题目")
+                            .font(.system(size: 36))
+                        Text("先拍一题，尽量只保留一道题的题干")
                             .foregroundStyle(.secondary)
                     }
                 }
             }
+
+            Text("参考豆包爱学这类拍题产品的思路，先框选单题再识别，效果会比整页作业直接上传稳很多。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
                 Button("拍照解题") {
@@ -105,9 +117,47 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
+    private var recognitionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("第 2 步：本地 OCR 识别")
+                .font(.title3.bold())
+
+            HStack(alignment: .center, spacing: 12) {
+                Capsule()
+                    .fill(viewModel.isRecognizing ? Color.orange.opacity(0.18) : Color.teal.opacity(0.18))
+                    .overlay(
+                        Text(viewModel.recognitionStatus)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(viewModel.isRecognizing ? .orange : .teal)
+                            .padding(.horizontal, 14)
+                    )
+                    .frame(height: 38)
+
+                if viewModel.isRecognizing {
+                    ProgressView()
+                }
+            }
+
+            Text(viewModel.recognitionHint)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("识别出的题干")
+                    .font(.headline)
+                TextEditor(text: $viewModel.recognizedText)
+                    .frame(minHeight: 140)
+                    .padding(10)
+                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        }
+        .padding(20)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
     private var optionsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("解题设置")
+            Text("第 3 步：补充解题信息")
                 .font(.title3.bold())
 
             Picker("学科", selection: $viewModel.selectedSubject) {
@@ -132,21 +182,12 @@ struct ContentView: View {
             .pickerStyle(.segmented)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("补充说明")
+                Text("手动补充题干或要求")
                     .font(.headline)
                 TextEditor(text: $viewModel.questionHint)
-                    .frame(minHeight: 100)
+                    .frame(minHeight: 110)
                     .padding(10)
-                    .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("本地 OCR 识别的题干")
-                    .font(.headline)
-                TextEditor(text: $viewModel.recognizedText)
-                    .frame(minHeight: 120)
-                    .padding(10)
-                    .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
         .padding(20)
@@ -172,7 +213,11 @@ struct ContentView: View {
                 .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(viewModel.isSubmitting || viewModel.selectedImage == nil)
+            .disabled(viewModel.isSubmitting || viewModel.selectedImage == nil || viewModel.isRecognizing)
+
+            Text("如果 OCR 提示像整页作业，建议先裁到单题再提交，这比直接让大模型猜要稳得多。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
@@ -201,7 +246,7 @@ struct ContentView: View {
                 infoCard(title: "重拍建议", body: result.retakeReason, accent: .orange)
             }
 
-            infoCard(title: "题目识别", body: result.cleanedQuestion, accent: .teal)
+            infoCard(title: "题干识别", body: result.cleanedQuestion, accent: .teal)
             infoCard(title: "答案", body: result.answer, accent: .blue)
             listCard(title: "分步讲解", items: result.keySteps)
             infoCard(title: "完整解析", body: result.fullExplanation, accent: .indigo)
@@ -246,11 +291,24 @@ struct ContentView: View {
                     Spacer()
                 }
                 .padding(14)
-                .background(Color.white.opacity(0.66), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .background(Color.white.opacity(0.68), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
         }
         .padding(20)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private func statPill(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.62), in: Capsule())
     }
 
     private func infoCard(title: String, body: String, accent: Color) -> some View {
@@ -262,7 +320,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(16)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func listCard(title: String, items: [String]) -> some View {
@@ -285,7 +343,7 @@ struct ContentView: View {
             }
         }
         .padding(16)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func tagCard(title: String, items: [String]) -> some View {
@@ -309,6 +367,6 @@ struct ContentView: View {
             }
         }
         .padding(16)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }

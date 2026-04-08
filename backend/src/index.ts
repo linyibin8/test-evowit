@@ -7,7 +7,7 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { appendTurn, getOrCreateSession, getSessionSummary } from "./session-store.js";
 import { solveProblem } from "./solver.js";
-import { getTrace, listTraces, TraceLogger } from "./trace-logger.js";
+import { getTrace, listTraces, subscribeTraceEvents, summarizeTraces, TraceLogger } from "./trace-logger.js";
 import type { AnalyzeSolveResponse, SolveClientTrace, SolveProblemExecution, SolveProblemPayload } from "./types.js";
 
 const app = express();
@@ -21,12 +21,23 @@ const clientTraceSchema = z
   .object({
     source: z.enum(["camera", "photoLibrary"]).optional(),
     recognizer: z.string().optional(),
+    preprocessProfile: z.string().optional(),
+    cropApplied: z.boolean().optional(),
+    ocrQuality: z.string().optional(),
+    ocrQualityReason: z.string().optional(),
     ocrDurationMs: z.number().nonnegative().optional(),
     recognizedLineCount: z.number().int().nonnegative().optional(),
     recognizedTextLength: z.number().int().nonnegative().optional(),
     imageWidth: z.number().int().nonnegative().optional(),
     imageHeight: z.number().int().nonnegative().optional(),
     imageBytes: z.number().int().nonnegative().optional(),
+    originalImageWidth: z.number().int().nonnegative().optional(),
+    originalImageHeight: z.number().int().nonnegative().optional(),
+    ocrAverageConfidence: z.number().min(0).max(1).optional(),
+    ocrPass: z.string().optional(),
+    autoCropApplied: z.boolean().optional(),
+    autoCropCoverage: z.number().min(0).max(1).optional(),
+    ocrWarnings: z.array(z.string()).optional(),
     appVersion: z.string().optional(),
     buildNumber: z.string().optional(),
     clientStartedAt: z.string().optional()
@@ -68,8 +79,10 @@ function buildTraceLogger(payload: SolveProblemPayload, imageBytes: number) {
     answerStyle: payload.answerStyle,
     questionHint,
     questionHintLength: questionHint.length,
-    recognizedTextPreview: recognizedText.slice(0, 400),
+    recognizedText,
+    recognizedTextPreview: recognizedText.slice(0, 800),
     recognizedTextLength: recognizedText.length,
+    recognizedLineCount: recognizedText ? recognizedText.split(/\r?\n/).filter(Boolean).length : 0,
     hasImage: Boolean(payload.imageBase64),
     imageBytes,
     imageHash,
@@ -121,6 +134,58 @@ app.get("/api/debug/traces", async (req, res) => {
   }
 });
 
+app.get("/api/debug/summary", async (req, res) => {
+  try {
+    const limit = Number(req.query.limit || 200);
+    const summary = await summarizeTraces(Number.isFinite(limit) ? limit : 200);
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
+});
+
+app.get("/api/debug/overview", async (req, res) => {
+  try {
+    const limit = Number(req.query.limit || 200);
+    const summary = await summarizeTraces(Number.isFinite(limit) ? limit : 200);
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
+});
+
+app.get("/api/debug/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  const sendEvent = (event: string, data: unknown) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  sendEvent("connected", { ok: true, at: new Date().toISOString() });
+
+  const unsubscribe = subscribeTraceEvents((event) => {
+    sendEvent("trace_updated", event);
+  });
+
+  const heartbeat = setInterval(() => {
+    sendEvent("heartbeat", { at: new Date().toISOString() });
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+    res.end();
+  });
+});
+
 app.get("/api/debug/traces/:traceId", async (req, res) => {
   try {
     const trace = await getTrace(req.params.traceId);
@@ -143,6 +208,12 @@ app.post("/api/solve", async (req, res) => {
   try {
     const payload = solveSchema.parse(req.body) as SolveProblemPayload;
     traceLogger = buildTraceLogger(payload, Math.floor((payload.imageBase64.length * 3) / 4));
+    traceLogger.step("request_received", {
+      entrypoint: "json",
+      clientSource: payload.clientTrace?.source || "unknown",
+      recognizedTextLength: payload.recognizedText?.length || 0,
+      imageBytes: Math.floor((payload.imageBase64.length * 3) / 4)
+    });
     const startedAt = Date.now();
     const session = getOrCreateSession(payload);
     const prior = getSessionSummary(session.id);
@@ -221,6 +292,12 @@ app.post("/api/solve/upload", upload.single("image"), async (req, res) => {
     };
 
     traceLogger = buildTraceLogger(payload, req.file.size);
+    traceLogger.step("request_received", {
+      entrypoint: "multipart_upload",
+      clientSource: payload.clientTrace?.source || "unknown",
+      recognizedTextLength: payload.recognizedText?.length || 0,
+      imageBytes: req.file.size
+    });
     const startedAt = Date.now();
     const session = getOrCreateSession(payload);
     const prior = getSessionSummary(session.id);

@@ -17,7 +17,7 @@ enum PickerSource: String, Identifiable {
 
 struct ImagePicker: UIViewControllerRepresentable {
     let source: PickerSource
-    let onImagePicked: (UIImage, PickerSource) -> Void
+    let onImagePicked: (UIImage, PickerSource, Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(source: source, onImagePicked: onImagePicked)
@@ -27,7 +27,8 @@ struct ImagePicker: UIViewControllerRepresentable {
         let controller = UIImagePickerController()
         controller.sourceType = UIImagePickerController.isSourceTypeAvailable(source.sourceType) ? source.sourceType : .photoLibrary
         controller.delegate = context.coordinator
-        controller.allowsEditing = false
+        controller.allowsEditing = true
+        controller.modalPresentationStyle = .fullScreen
         return controller
     }
 
@@ -35,9 +36,9 @@ struct ImagePicker: UIViewControllerRepresentable {
 
     final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
         let source: PickerSource
-        let onImagePicked: (UIImage, PickerSource) -> Void
+        let onImagePicked: (UIImage, PickerSource, Bool) -> Void
 
-        init(source: PickerSource, onImagePicked: @escaping (UIImage, PickerSource) -> Void) {
+        init(source: PickerSource, onImagePicked: @escaping (UIImage, PickerSource, Bool) -> Void) {
             self.source = source
             self.onImagePicked = onImagePicked
         }
@@ -46,9 +47,13 @@ struct ImagePicker: UIViewControllerRepresentable {
             _ picker: UIImagePickerController,
             didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
         ) {
-            if let image = info[.originalImage] as? UIImage {
-                onImagePicked(image, source)
+            let editedImage = info[.editedImage] as? UIImage
+            let originalImage = info[.originalImage] as? UIImage
+
+            if let image = editedImage ?? originalImage {
+                onImagePicked(image, source, editedImage != nil)
             }
+
             picker.dismiss(animated: true)
         }
 
