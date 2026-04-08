@@ -40,6 +40,8 @@ targets:
     info:
       path: TestEvowit/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: test-evowit
         UILaunchScreen: {}
         NSCameraUsageDescription: Allow camera access to capture homework questions.
