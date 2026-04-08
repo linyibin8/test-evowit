@@ -1,6 +1,11 @@
 name: TestFlight Distribute
 
 on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/testflight-distribute.yml"
+      - "scripts/distribute_testflight_build.py"
   workflow_dispatch:
     inputs:
       build_version:
