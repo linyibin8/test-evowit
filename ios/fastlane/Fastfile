@@ -27,7 +27,6 @@ platform :ios do
     backend_base_url = ENV["BACKEND_BASE_URL"].to_s.empty? ? "http://120.197.118.22:21080" : ENV["BACKEND_BASE_URL"]
     groups = ENV["TESTFLIGHT_GROUPS"].to_s.split(",").map(&:strip).reject(&:empty?)
     team_id = ENV["APPLE_TEAM_ID"] || "76PHSCHPCK"
-    provisioning_profile = ENV["IOS_PROVISIONING_PROFILE_SPECIFIER"] || "test-evowit App Store"
 
     sh("bash #{File.join(repo_root, 'scripts', 'install_xcodegen.sh').shellescape}")
     sh("cd #{project_root.shellescape} && export PATH=$HOME/.local/bin:$HOME/bin/bin:$PATH && xcodegen generate")
@@ -38,14 +37,11 @@ platform :ios do
       clean: true,
       export_method: "app-store",
       export_options: {
-        signingStyle: "manual",
-        teamID: team_id,
-        provisioningProfiles: {
-          "com.we555.test-evowit" => provisioning_profile
-        }
+        signingStyle: "automatic",
+        teamID: team_id
       },
       export_xcargs: "-allowProvisioningUpdates",
-      xcargs: "DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER='#{provisioning_profile}' PROVISIONING_PROFILE='bbce9b98-170f-45b6-81e9-a488d946fe84' CODE_SIGN_IDENTITY='Apple Distribution'"
+      xcargs: "DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Automatic"
     )
 
     upload_options = {
