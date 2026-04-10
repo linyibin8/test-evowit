@@ -275,6 +275,8 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
     private var latestDetection: QuestionDetection?
     private var localDetection: QuestionDetection?
     private var remoteDetection: QuestionDetection?
+    private var lastLocalCandidate: QuestionDetection?
+    private var localCandidateStreak = 0
     private var lastAnalysisTime: CFTimeInterval = 0
     private var lastPositiveDetectionTime: CFTimeInterval = 0
     private var lastServerRequestTime: CFTimeInterval = 0
@@ -396,7 +398,7 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
 
     @MainActor
     private func applyLocalDetection(_ detection: QuestionDetection?) {
-        localDetection = detection
+        localDetection = stabilizedLocalDetection(from: detection)
         refreshDisplayedDetection()
     }
 
@@ -430,6 +432,10 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
                 lockBadgeText = "Refining"
                 guidanceText = "Keep the same framing. The stronger detector is checking the guide area."
             }
+        } else if localCandidateStreak > 0 {
+            detectedRect = nil
+            lockBadgeText = "Stabilizing"
+            guidanceText = "Hold the phone steady. The guide needs one more clean frame before it locks."
         } else if now - lastPositiveDetectionTime > 0.9 {
             latestDetection = nil
             detectedRect = nil
@@ -512,6 +518,32 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
             return nil
         }
     }
+
+    @MainActor
+    private func stabilizedLocalDetection(from detection: QuestionDetection?) -> QuestionDetection? {
+        guard let detection else {
+            lastLocalCandidate = nil
+            localCandidateStreak = 0
+            return nil
+        }
+
+        if let previous = lastLocalCandidate,
+           isSimilar(previous.normalizedRect, detection.normalizedRect) {
+            localCandidateStreak += 1
+        } else {
+            localCandidateStreak = 1
+        }
+
+        lastLocalCandidate = detection
+        return localCandidateStreak >= 2 ? detection : nil
+    }
+
+    private func isSimilar(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        abs(lhs.midX - rhs.midX) <= 0.08
+            && abs(lhs.midY - rhs.midY) <= 0.08
+            && abs(lhs.width - rhs.width) <= 0.12
+            && abs(lhs.height - rhs.height) <= 0.12
+    }
 }
 
 extension QuestionCameraViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
@@ -525,7 +557,7 @@ extension QuestionCameraViewModel: AVCaptureVideoDataOutputSampleBufferDelegate 
         }
 
         let now = CACurrentMediaTime()
-        guard now - lastAnalysisTime >= 0.33 else {
+        guard now - lastAnalysisTime >= 0.25 else {
             return
         }
         lastAnalysisTime = now

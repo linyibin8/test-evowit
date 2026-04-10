@@ -22,7 +22,7 @@ enum QuestionDetector {
         focusRect: CGRect? = nil,
         recognitionLevel: VNRequestTextRecognitionLevel = .fast
     ) -> QuestionDetection? {
-        let request = makeRequest(recognitionLevel: recognitionLevel)
+        let request = makeRequest(recognitionLevel: recognitionLevel, regionOfInterest: focusRect)
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
 
         do {
@@ -31,7 +31,7 @@ enum QuestionDetector {
             return nil
         }
 
-        let observations = request.results as? [VNRecognizedTextObservation] ?? []
+        let observations = request.results ?? []
         return bestDetection(from: observations, focusRect: focusRect)
     }
 
@@ -45,7 +45,7 @@ enum QuestionDetector {
             return nil
         }
 
-        let request = makeRequest(recognitionLevel: recognitionLevel)
+        let request = makeRequest(recognitionLevel: recognitionLevel, regionOfInterest: focusRect)
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
 
         do {
@@ -54,7 +54,7 @@ enum QuestionDetector {
             return nil
         }
 
-        let observations = request.results as? [VNRecognizedTextObservation] ?? []
+        let observations = request.results ?? []
         return bestDetection(from: observations, focusRect: focusRect)
     }
 
@@ -144,13 +144,17 @@ enum QuestionDetector {
     }
 
     private static func makeRequest(
-        recognitionLevel: VNRequestTextRecognitionLevel
+        recognitionLevel: VNRequestTextRecognitionLevel,
+        regionOfInterest: CGRect? = nil
     ) -> VNRecognizeTextRequest {
         let request = VNRecognizeTextRequest()
         request.recognitionLanguages = ["zh-Hans", "en-US"]
         request.recognitionLevel = recognitionLevel
         request.usesLanguageCorrection = false
         request.minimumTextHeight = recognitionLevel == .fast ? 0.014 : 0.01
+        if let regionOfInterest {
+            request.regionOfInterest = regionOfInterest.clampedToUnitRect()
+        }
         return request
     }
 
