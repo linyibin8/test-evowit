@@ -2,9 +2,13 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-dotenv.config();
-
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const backendEnvPath = path.join(repoRoot, "backend", ".env");
+
+dotenv.config({
+  path: backendEnvPath,
+  override: true
+});
 
 export const config = {
   port: Number(process.env.PORT || 21080),
@@ -15,6 +19,8 @@ export const config = {
   modelReasoningEffort: process.env.MODEL_REASONING_EFFORT || "medium",
   modelTimeoutMs: Number(process.env.MODEL_TIMEOUT_MS || 30000),
   visionImageDetail: process.env.VISION_IMAGE_DETAIL || "low",
+  layoutServiceUrl: process.env.LAYOUT_SERVICE_URL || "",
+  layoutServiceTimeoutMs: Number(process.env.LAYOUT_SERVICE_TIMEOUT_MS || 12000),
   allowedOrigin: process.env.ALLOWED_ORIGIN || "*",
   logDir: process.env.LOG_DIR || path.join(repoRoot, "output")
 };

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import multer from "multer";
 import { z } from "zod";
 import { config } from "./config.js";
+import { detectQuestionCrop } from "./layout-service.js";
 import { appendTurn, getOrCreateSession, getSessionSummary } from "./session-store.js";
 import { solveProblem } from "./solver.js";
 import { getTrace, listTraces, subscribeTraceEvents, summarizeTraces, TraceLogger } from "./trace-logger.js";
@@ -16,6 +17,13 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 
 app.use(cors({ origin: config.allowedOrigin }));
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static(fileURLToPath(new URL("../public", import.meta.url))));
+
+const normalizedRectSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().positive().max(1),
+  height: z.number().positive().max(1)
+});
 
 const clientTraceSchema = z
   .object({
@@ -36,8 +44,10 @@ const clientTraceSchema = z
     ocrAverageConfidence: z.number().min(0).max(1).optional(),
     ocrPass: z.string().optional(),
     autoCropApplied: z.boolean().optional(),
+    autoCropSource: z.string().optional(),
     autoCropCoverage: z.number().min(0).max(1).optional(),
     ocrWarnings: z.array(z.string()).optional(),
+    focusRect: normalizedRectSchema.optional(),
     appVersion: z.string().optional(),
     buildNumber: z.string().optional(),
     clientStartedAt: z.string().optional()
@@ -53,6 +63,11 @@ const solveSchema = z.object({
   recognizedText: z.string().optional(),
   imageBase64: z.string().min(32),
   clientTrace: clientTraceSchema.optional()
+});
+
+const detectQuestionSchema = z.object({
+  imageBase64: z.string().min(32),
+  focusRect: normalizedRectSchema.optional()
 });
 
 function parseClientTrace(raw: unknown): SolveClientTrace | undefined {
@@ -196,6 +211,31 @@ app.get("/api/debug/traces/:traceId", async (req, res) => {
 
     res.json(trace);
   } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
+});
+
+app.post("/api/detect-question", async (req, res) => {
+  try {
+    const payload = detectQuestionSchema.parse(req.body);
+    const result = await detectQuestionCrop(payload.imageBase64, payload.focusRect);
+
+    if (!result) {
+      res.status(503).json({
+        error: "Layout detection service is not configured"
+      });
+      return;
+    }
+
+    res.json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: error.flatten() });
+      return;
+    }
+
     res.status(500).json({
       error: error instanceof Error ? error.message : "Unknown error"
     });

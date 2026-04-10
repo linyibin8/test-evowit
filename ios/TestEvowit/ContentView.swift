@@ -35,8 +35,21 @@ struct ContentView: View {
             }
             .navigationTitle("test-evowit")
             .sheet(item: $activePickerSource) { source in
-                ImagePicker(source: source) { image, pickerSource, cropApplied in
-                    viewModel.setImage(image, source: pickerSource, cropApplied: cropApplied)
+                switch source {
+                case .camera:
+                    QuestionCameraView { image, metadata in
+                        viewModel.setImage(
+                            image,
+                            source: .camera,
+                            cropApplied: metadata.cropApplied,
+                            metadata: metadata,
+                            autoSolve: true
+                        )
+                    }
+                case .photoLibrary:
+                    ImagePicker(source: source) { image, pickerSource, cropApplied in
+                        viewModel.setImage(image, source: pickerSource, cropApplied: cropApplied)
+                    }
                 }
             }
         }

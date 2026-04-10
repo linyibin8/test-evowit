@@ -57,6 +57,19 @@ jobs:
             echo "APP_STORE_CONNECT_KEY_PATH=${HOME}/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" >> "${GITHUB_ENV}"
           fi
 
+      - name: Ensure App Store resources
+        if: ${{ env.APP_STORE_CONNECT_KEY_PATH != '' && env.APP_STORE_CONNECT_ISSUER_ID != '' && env.APP_STORE_CONNECT_KEY_ID != '' }}
+        shell: bash
+        working-directory: .
+        run: |
+          python3 -m pip install --quiet pyjwt requests cryptography || true
+          python3 scripts/ensure_appstore_resources.py \
+            --bundle-id com.we555.test-evowit \
+            --app-name test-evowit \
+            --sku test-evowit \
+            --profile-name "test-evowit App Store" \
+            --output-profile "${HOME}/Library/MobileDevice/Provisioning Profiles/test-evowit-appstore.mobileprovision"
+
       - name: Build and upload
         shell: bash
         run: |

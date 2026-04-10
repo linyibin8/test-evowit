@@ -236,8 +236,11 @@ def main() -> int:
         ),
     )
 
-    client.patch_build_encryption(build_id)
-    print("Patched usesNonExemptEncryption=false")
+    if build_attrs.get("usesNonExemptEncryption") is False:
+        print("Build already declares usesNonExemptEncryption=false")
+    else:
+        client.patch_build_encryption(build_id)
+        print("Patched usesNonExemptEncryption=false")
 
     raw_group_names = [item.strip() for item in args.group_names.split(",") if item.strip()]
     requested_groups = {name for name in raw_group_names}

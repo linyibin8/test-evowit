@@ -1,6 +1,11 @@
 import Foundation
 
 struct APIClient {
+    private struct DetectQuestionRequest: Encodable {
+        let imageBase64: String
+        let focusRect: ServerNormalizedRect?
+    }
+
     func solve(_ request: SolveProblemRequest, imageData: Data) async throws -> SolveProblemResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
         var urlRequest = URLRequest(url: AppConfig.backendBaseURL.appending(path: "api/solve/upload"))
@@ -23,6 +28,37 @@ struct APIClient {
         }
 
         return try JSONDecoder().decode(SolveProblemResponse.self, from: data)
+    }
+
+    func detectQuestion(
+        in imageData: Data,
+        focusRect: ServerNormalizedRect? = nil
+    ) async throws -> ServerQuestionDetectionResponse {
+        var urlRequest = URLRequest(url: AppConfig.backendBaseURL.appending(path: "api/detect-question"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(
+            DetectQuestionRequest(
+                imageBase64: imageData.base64EncodedString(),
+                focusRect: focusRect
+            )
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "server error"
+            throw NSError(
+                domain: "APIClient",
+                code: httpResponse.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
+
+        return try JSONDecoder().decode(ServerQuestionDetectionResponse.self, from: data)
     }
 
     private func makeMultipartBody(

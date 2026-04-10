@@ -2,6 +2,13 @@ export type ProblemSubject = "math" | "chinese" | "english" | "science" | "gener
 
 export type AnswerStyle = "guided" | "detailed" | "direct";
 
+export interface NormalizedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface SolveClientTrace {
   source?: "camera" | "photoLibrary";
   recognizer?: string;
@@ -20,8 +27,10 @@ export interface SolveClientTrace {
   ocrAverageConfidence?: number;
   ocrPass?: string;
   autoCropApplied?: boolean;
+  autoCropSource?: string;
   autoCropCoverage?: number;
   ocrWarnings?: string[];
+  focusRect?: NormalizedRect;
   appVersion?: string;
   buildNumber?: string;
   clientStartedAt?: string;

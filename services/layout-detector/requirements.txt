@@ -1,0 +1,5 @@
+flask>=3.0
+gunicorn>=23.0.0
+paddlepaddle>=3.3.0
+paddleocr>=3.4.0
+pillow>=11.0

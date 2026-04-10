@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { openai } from "./openai.js";
 import { config } from "./config.js";
+import { detectQuestionCrop } from "./layout-service.js";
 import { buildSolverPrompt, solverSystemPrompt } from "./prompts.js";
 import { extractQuestionText, normalizeText, solveWithHeuristics, tryLocalSolve } from "./local-solver.js";
 import type { TraceLogger } from "./trace-logger.js";
@@ -40,6 +41,40 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function getErrorName(error: unknown) {
+  if (typeof error === "object" && error && "name" in error) {
+    return String(error.name);
+  }
+
+  return undefined;
+}
+
+function getErrorCode(error: unknown) {
+  if (typeof error === "object" && error && "code" in error && error.code != null) {
+    return String(error.code);
+  }
+
+  return undefined;
+}
+
+function getErrorBodySnippet(error: unknown) {
+  if (typeof error !== "object" || !error || !("body" in error)) {
+    return undefined;
+  }
+
+  const body = error.body;
+  if (body == null) {
+    return undefined;
+  }
+
+  try {
+    const text = typeof body === "string" ? body : JSON.stringify(body);
+    return text.slice(0, 1200);
+  } catch {
+    return undefined;
+  }
+}
+
 function canRetryModel(error: unknown) {
   const status = getStatusCode(error);
   const message = getErrorMessage(error).toLowerCase();
@@ -72,12 +107,12 @@ function assessRecognizedText(payload: SolveProblemPayload) {
   const lineCount = lines.length;
   const shortLineCount = lines.filter((line) => line.length <= 4).length;
   const shortLineRatio = lineCount > 0 ? shortLineCount / lineCount : 0;
-  const suspiciousCharCount = (compact.match(/[�□锟解枴]/g) || []).length;
+  const suspiciousCharCount = (compact.match(/[锟解枴閿熻В鏋碷]/g) || []).length;
   const suspiciousRatio = compact.length > 0 ? suspiciousCharCount / compact.length : 1;
   const mathSignal = /[0-9x=+\-*/()]/.test(normalized);
   const latinNoiseCount = (normalized.match(/[A-Za-z]{2,}/g) || []).length;
-  const weirdSymbolCount = (normalized.match(/[⅓⅔⅛①②③④⑤⑥⑦⑧⑨⑩]/g) || []).length;
-  const numberedQuestionCount = (normalized.match(/(?:^|\n)\s*\d+[.)、．]/g) || []).length;
+  const weirdSymbolCount = (normalized.match(/[鈪撯厰鈪涒憼鈶♀憿鈶ｂ懁鈶モ懄鈶р懆鈶]/g) || []).length;
+  const numberedQuestionCount = (normalized.match(/(?:^|\n)\s*\d+[.)、]/g) || []).length;
   const likelyWorksheet = lineCount >= 8 || compact.length >= 180 || numberedQuestionCount >= 2;
   const noisyOcr = shortLineRatio >= 0.28 || latinNoiseCount >= 2 || weirdSymbolCount >= 2;
   const textStrong =
@@ -111,13 +146,21 @@ function assessRecognizedText(payload: SolveProblemPayload) {
   };
 }
 
+function toApiReasoningEffort(value: string) {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return "high";
+}
+
 function buildRequestPayload(
   payload: SolveProblemPayload,
   sessionSummary: string | undefined,
   mode: "text_only" | "vision"
 ) {
   const prompt = buildSolverPrompt(payload, sessionSummary);
-  const reasoningEffort = mode === "text_only" ? "low" : config.modelReasoningEffort;
+  const reasoningEffort = mode === "text_only" ? "low" : toApiReasoningEffort(config.modelReasoningEffort);
   const content =
     mode === "vision"
       ? [
@@ -221,14 +264,15 @@ function buildRetakeFallback(
     inferredSubject,
     problemType: "需要重新拍题",
     difficulty: "待识别",
-    answer: "当前照片更像整页作业或题干噪声较大，继续强行作答很容易答错。",
+    answer: "当前图片更像整页作业、题干不完整，或者 OCR 噪声较重，继续强行作答很容易答错。",
     keySteps: [
-      "已经识别到部分题干，但这不是稳定的单题输入。",
-      "建议先裁切到一道题，再重新拍照或补充完整题干。"
+      "已经识别到部分题干，但目前不是稳定的单题输入。",
+      "建议先裁成单题，再重新拍照或补充完整题干。"
     ],
-    fullExplanation: "当前输入里包含多行、多题或较多 OCR 噪声，直接作答会把不同题目混在一起。先框出单题再识别，准确率会明显更高。",
+    fullExplanation:
+      "当前输入包含多行、多题或较多 OCR 噪声，直接作答会把不同题目混在一起。先框出单题再识别，准确率会明显更高。",
     knowledgePoints: ["单题拍照", "OCR 识别质量"],
-    commonMistakes: ["整页一起拍", "题干没拍完整", "照片过斜或反光"],
+    commonMistakes: ["整页一起拍", "题干没有拍完整", "照片过斜或反光"],
     followUpPractice: "把图片裁成只保留一道题后，再重新解析。",
     encouragement: "这类题先拍成单题，后面的讲解会稳定很多。",
     confidence: 0.2,
@@ -271,8 +315,47 @@ export async function solveProblem(
   sessionSummary?: string,
   trace?: TraceLogger
 ): Promise<SolveProblemExecution> {
-  const questionText = extractQuestionText(payload);
-  const textAssessment = assessRecognizedText(payload);
+  let workingPayload = payload;
+  let serverCropApplied = false;
+
+  if (config.layoutServiceUrl && payload.imageBase64) {
+    try {
+      const layoutDetection = await detectQuestionCrop(payload.imageBase64, payload.clientTrace?.focusRect);
+      if (layoutDetection) {
+        trace?.step("layout_detector_completed", {
+          model: layoutDetection.model,
+          device: layoutDetection.device,
+          boxCount: layoutDetection.boxCount,
+          cropApplied: layoutDetection.cropApplied,
+          coverage: layoutDetection.coverage,
+          questionBox: layoutDetection.questionBox,
+          boxes: layoutDetection.boxes.slice(0, 12)
+        });
+
+        if (layoutDetection.cropApplied && layoutDetection.croppedImageBase64) {
+          workingPayload = {
+            ...payload,
+            imageBase64: layoutDetection.croppedImageBase64
+          };
+          serverCropApplied = true;
+          trace?.step("layout_detector_crop_applied", {
+            croppedWidth: layoutDetection.croppedWidth,
+            croppedHeight: layoutDetection.croppedHeight,
+            croppedBytes: layoutDetection.croppedBytes,
+            cropCoordinate: layoutDetection.cropCoordinate,
+            coverage: layoutDetection.coverage
+          });
+        }
+      }
+    } catch (error) {
+      trace?.step("layout_detector_failed", {
+        message: getErrorMessage(error)
+      });
+    }
+  }
+
+  const questionText = extractQuestionText(workingPayload);
+  const textAssessment = assessRecognizedText(workingPayload);
   const inferredSubject = payload.subject === "math" ? "数学" : "通用";
 
   trace?.step("ocr_text_assessed", {
@@ -286,19 +369,22 @@ export async function solveProblem(
     numberedQuestionCount: textAssessment.numberedQuestionCount,
     likelyWorksheet: textAssessment.likelyWorksheet,
     noisyOcr: textAssessment.noisyOcr,
-    shouldUseTextOnly: textAssessment.shouldUseTextOnly
+    shouldUseTextOnly: textAssessment.shouldUseTextOnly,
+    serverCropApplied
   });
 
-  const localSolved = tryLocalSolve(payload);
+  const canUseLocalSolver = !textAssessment.likelyWorksheet && !textAssessment.noisyOcr;
+  const localSolved = canUseLocalSolver ? tryLocalSolve(workingPayload) : null;
   trace?.step("local_solver_checked", {
     matched: Boolean(localSolved),
-    subject: payload.subject
+    subject: payload.subject,
+    enabled: canUseLocalSolver
   });
 
   if (localSolved) {
     trace?.setRouting({
       selectedRoute: "local",
-      reason: "基础数学题命中本地求解器",
+      reason: "基础数学题命中本地快解器",
       textAssessment
     });
 
@@ -309,17 +395,20 @@ export async function solveProblem(
     };
   }
 
-  const preferredMode = textAssessment.shouldUseTextOnly ? "text_only" : "vision";
+  const preferredMode = !serverCropApplied && textAssessment.shouldUseTextOnly ? "text_only" : "vision";
   const selectedRoute = preferredMode === "text_only" ? "model_text_only" : "model_vision";
   const routeReason =
     preferredMode === "text_only"
       ? "OCR 文本清晰且更像单题，优先走纯文本模型调用"
-      : "OCR 文本不足、像整页题单或噪声较高，改走带图片的视觉模型调用";
+      : serverCropApplied
+        ? "开源版面检测已将图片裁成单题，优先走视觉模型解题"
+        : "OCR 文本不足、像整页题单或噪声较高，改走带图片的视觉模型调用";
 
   trace?.setRouting({
     selectedRoute,
     reason: routeReason,
-    textAssessment
+    textAssessment,
+    serverCropApplied
   });
   trace?.step("route_selected", {
     selectedRoute,
@@ -331,7 +420,7 @@ export async function solveProblem(
       ? [config.model, config.fallbackModel]
       : [config.model];
   const candidateModes =
-    preferredMode === "text_only" && payload.imageBase64 ? (["text_only", "vision"] as const) : ([preferredMode] as const);
+    preferredMode === "text_only" && workingPayload.imageBase64 ? (["text_only", "vision"] as const) : ([preferredMode] as const);
 
   let lastError: unknown;
 
@@ -350,7 +439,7 @@ export async function solveProblem(
       const model = candidateModels[modelIndex];
 
       try {
-        const result = await callModel(model, payload, sessionSummary, mode, trace);
+        const result = await callModel(model, workingPayload, sessionSummary, mode, trace);
         trace?.step("model_attempt_succeeded", {
           model,
           mode,
@@ -372,8 +461,11 @@ export async function solveProblem(
           mode,
           attempt: modelIndex + 1,
           modeAttempt: modeIndex + 1,
+          errorName: getErrorName(error),
+          errorCode: getErrorCode(error),
           message: getErrorMessage(error),
           status: getStatusCode(error),
+          bodySnippet: getErrorBodySnippet(error),
           abort: isAbortError(error),
           retryable
         });
@@ -394,7 +486,7 @@ export async function solveProblem(
     return {
       result: buildRetakeFallback(
         questionText,
-        "当前照片更像整页作业或题干噪声较大，请裁切到单题后重拍。",
+        "当前照片更像整页作业或题干噪声较大，请裁成单题后重拍。",
         inferredSubject
       ),
       pipelineRoute: "heuristic_fallback",
@@ -403,7 +495,7 @@ export async function solveProblem(
   }
 
   return {
-    result: solveWithHeuristics(payload),
+    result: solveWithHeuristics(workingPayload),
     pipelineRoute: "heuristic_fallback",
     usedModel: "heuristic-fallback"
   };

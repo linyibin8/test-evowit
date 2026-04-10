@@ -45,6 +45,25 @@ enum GradeBand: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+enum QuestionDetectionSource: String, Codable {
+    case guideFrame = "guide_frame"
+    case localGuideVision = "local_guide_vision"
+    case localVision = "local_vision"
+    case serverLayout = "server_layout"
+    case serverFocusedLayout = "server_focused_layout"
+}
+
+struct QuestionCaptureMetadata {
+    let cropApplied: Bool
+    let cropSource: QuestionDetectionSource?
+    let cropCoverage: Double?
+    let focusRect: ServerNormalizedRect?
+    let originalImageWidth: Int?
+    let originalImageHeight: Int?
+    let previewDetectionSource: QuestionDetectionSource?
+    let warnings: [String]
+}
+
 struct SolveClientTrace: Codable {
     let source: String?
     let recognizer: String?
@@ -58,6 +77,15 @@ struct SolveClientTrace: Codable {
     let imageWidth: Int?
     let imageHeight: Int?
     let imageBytes: Int?
+    let originalImageWidth: Int?
+    let originalImageHeight: Int?
+    let ocrAverageConfidence: Double?
+    let ocrPass: String?
+    let autoCropApplied: Bool?
+    let autoCropSource: String?
+    let autoCropCoverage: Double?
+    let ocrWarnings: [String]?
+    let focusRect: ServerNormalizedRect?
     let appVersion: String?
     let buildNumber: String?
     let clientStartedAt: String?
@@ -116,4 +144,46 @@ struct SolveHistoryItem: Identifiable {
     let thumbnailData: Data
     let problemText: String
     let answer: String
+}
+
+struct ServerQuestionDetectionResponse: Codable {
+    let ok: Bool
+    let model: String
+    let device: String
+    let imageWidth: Int
+    let imageHeight: Int
+    let boxCount: Int
+    let boxes: [ServerQuestionDetectionBox]
+    let questionBox: ServerQuestionBox?
+    let cropApplied: Bool
+    let croppedWidth: Int?
+    let croppedHeight: Int?
+    let croppedBytes: Int?
+    let cropCoordinate: [Int]?
+    let coverage: Double?
+    let focusRect: ServerNormalizedRect?
+}
+
+struct ServerQuestionDetectionBox: Codable {
+    let label: String
+    let score: Double
+    let coordinate: [Double]
+    let normalized: ServerNormalizedRect
+    let order: Int
+}
+
+struct ServerQuestionBox: Codable {
+    let score: Double
+    let coordinate: [Double]
+    let normalized: ServerNormalizedRect
+    let labels: [String]
+    let boxCount: Int
+    let areaRatio: Double
+}
+
+struct ServerNormalizedRect: Codable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
 }

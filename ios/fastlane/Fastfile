@@ -20,44 +20,90 @@ def app_store_connect_api_key_if_available
   )
 end
 
+def upload_package_to_testflight(ipa_path:, apple_id:, app_identifier:, bundle_version:, short_version:, provider_public_id:, username:)
+  password = ENV["APP_SPECIFIC_PASSWORD"].to_s.empty? ? ENV["FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD"] : ENV["APP_SPECIFIC_PASSWORD"]
+
+  UI.user_error!("APP_SPECIFIC_PASSWORD or FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD must be set") if password.to_s.empty?
+
+  command = [
+    "xcrun",
+    "altool",
+    "--upload-package",
+    ipa_path,
+    "--apple-id",
+    apple_id,
+    "--bundle-id",
+    app_identifier,
+    "--bundle-version",
+    bundle_version,
+    "--bundle-short-version-string",
+    short_version,
+    "--platform",
+    "ios",
+    "--provider-public-id",
+    provider_public_id,
+    "-u",
+    username,
+    "-p",
+    password,
+    "--show-progress",
+    "--output-format",
+    "json"
+  ]
+
+  sh(command.shelljoin)
+end
+
 platform :ios do
   desc "Build and upload test-evowit to TestFlight"
   lane :beta do
-    connect_api_key = app_store_connect_api_key_if_available
     backend_base_url = ENV["BACKEND_BASE_URL"].to_s.empty? ? "http://120.197.118.22:21080" : ENV["BACKEND_BASE_URL"]
-    groups = ENV["TESTFLIGHT_GROUPS"].to_s.split(",").map(&:strip).reject(&:empty?)
     team_id = ENV["APPLE_TEAM_ID"] || "76PHSCHPCK"
+    provisioning_profile = ENV["IOS_PROVISIONING_PROFILE_SPECIFIER"] || "test-evowit App Store"
+    app_identifier = "com.we555.test-evowit"
+    app_store_apple_id = ENV["APP_STORE_APPLE_ID"] || "6761759350"
+    provider_public_id = ENV["APP_STORE_CONNECT_PROVIDER_PUBLIC_ID"] || "53d996fc-e9b0-4687-baea-9622ad4fe23f"
+    xcodeproj_path = File.join(project_root, "test-evowit.xcodeproj")
 
     sh("bash #{File.join(repo_root, 'scripts', 'install_xcodegen.sh').shellescape}")
     sh("cd #{project_root.shellescape} && export PATH=$HOME/.local/bin:$HOME/bin/bin:$PATH && xcodegen generate")
 
-    build_app(
-      project: File.join(project_root, "test-evowit.xcodeproj"),
+    short_version = get_version_number(
+      xcodeproj: xcodeproj_path,
+      target: "TestEvowit"
+    )
+    bundle_version = get_build_number(
+      xcodeproj: xcodeproj_path
+    )
+
+    ipa_path = build_app(
+      project: xcodeproj_path,
       scheme: "TestEvowit",
       clean: true,
       export_method: "app-store",
       export_options: {
-        signingStyle: "automatic",
-        teamID: team_id
+        signingStyle: "manual",
+        signingCertificate: "Apple Distribution",
+        teamID: team_id,
+        provisioningProfiles: {
+          "com.we555.test-evowit" => provisioning_profile
+        }
       },
-      export_xcargs: "-allowProvisioningUpdates",
-      xcargs: "DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Automatic"
+      export_xcargs: "",
+      xcargs: "DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' PROVISIONING_PROFILE_SPECIFIER='#{provisioning_profile}'"
     )
 
-    upload_options = {
-      username: ENV["APPLE_ID"],
-      app_identifier: "com.we555.test-evowit",
-      skip_waiting_for_build_processing: false
-    }
+    ipa_path ||= lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("IPA output path is unavailable after build_app") if ipa_path.to_s.empty?
 
-    upload_options[:api_key] = connect_api_key unless connect_api_key.nil?
-
-    if groups.any?
-      upload_options[:distribute_external] = true
-      upload_options[:groups] = groups
-      upload_options[:notify_external_testers] = true
-    end
-
-    upload_to_testflight(upload_options)
+    upload_package_to_testflight(
+      ipa_path: ipa_path,
+      apple_id: app_store_apple_id,
+      app_identifier: app_identifier,
+      bundle_version: bundle_version,
+      short_version: short_version,
+      provider_public_id: provider_public_id,
+      username: ENV["APPLE_ID"]
+    )
   end
 end

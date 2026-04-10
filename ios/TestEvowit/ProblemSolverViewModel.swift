@@ -22,6 +22,9 @@ final class ProblemSolverViewModel: ObservableObject {
     private var sessionId: String?
     private var lastPickerSource: PickerSource?
     private var cropApplied = false
+    private var captureMetadata: QuestionCaptureMetadata?
+    private var pendingAutoSolve = false
+    private var prefersVisionSubmission = false
     private var recognitionResult = TextRecognitionResult(
         text: "",
         durationMs: 0,
@@ -43,7 +46,8 @@ final class ProblemSolverViewModel: ObservableObject {
         }
 
         let trimmedHint = questionHint.trimmingCharacters(in: .whitespacesAndNewlines)
-        if recognitionResult.qualityLevel != .good && trimmedHint.isEmpty {
+        let canUseVisionFallback = prefersVisionSubmission || cropApplied
+        if recognitionResult.qualityLevel != .good && trimmedHint.isEmpty && !canUseVisionFallback {
             errorMessage = recognitionResult.qualityMessage
             return
         }
@@ -77,6 +81,15 @@ final class ProblemSolverViewModel: ObservableObject {
                 imageWidth: cgImage?.width,
                 imageHeight: cgImage?.height,
                 imageBytes: jpegData.count,
+                originalImageWidth: captureMetadata?.originalImageWidth,
+                originalImageHeight: captureMetadata?.originalImageHeight,
+                ocrAverageConfidence: nil,
+                ocrPass: nil,
+                autoCropApplied: captureMetadata?.cropApplied,
+                autoCropSource: captureMetadata?.cropSource?.rawValue,
+                autoCropCoverage: captureMetadata?.cropCoverage,
+                ocrWarnings: captureMetadata?.warnings.isEmpty == true ? nil : captureMetadata?.warnings,
+                focusRect: captureMetadata?.focusRect,
                 appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                 buildNumber: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
                 clientStartedAt: isoFormatter.string(from: Date())
@@ -106,12 +119,21 @@ final class ProblemSolverViewModel: ObservableObject {
         isSubmitting = false
     }
 
-    func setImage(_ image: UIImage, source: PickerSource, cropApplied: Bool) {
+    func setImage(
+        _ image: UIImage,
+        source: PickerSource,
+        cropApplied: Bool,
+        metadata: QuestionCaptureMetadata? = nil,
+        autoSolve: Bool = false
+    ) {
         selectedImage = image
         latestResult = nil
         errorMessage = nil
         lastPickerSource = source
         self.cropApplied = cropApplied
+        captureMetadata = metadata
+        pendingAutoSolve = autoSolve
+        prefersVisionSubmission = autoSolve && source == .camera
         recognitionResult = TextRecognitionResult(
             text: "",
             durationMs: 0,
@@ -133,6 +155,13 @@ final class ProblemSolverViewModel: ObservableObject {
                 self.isRecognizing = false
                 self.recognitionStatus = statusText(for: result.qualityLevel)
                 self.recognitionHint = result.qualityMessage
+                let shouldAutoSolve = self.pendingAutoSolve
+                self.pendingAutoSolve = false
+                if shouldAutoSolve {
+                    Task {
+                        await self.solve()
+                    }
+                }
             }
         }
     }
@@ -146,6 +175,9 @@ final class ProblemSolverViewModel: ObservableObject {
         sessionId = nil
         lastPickerSource = nil
         cropApplied = false
+        captureMetadata = nil
+        pendingAutoSolve = false
+        prefersVisionSubmission = false
         isRecognizing = false
         recognitionStatus = "请先拍一题，并尽量裁到单题。"
         recognitionHint = "拍照后会先在本地做 OCR，再决定是否交给大模型。"

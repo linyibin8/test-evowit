@@ -24,6 +24,7 @@ This repo keeps the server modular so local OCR or math-specific engines can be 
 ```text
 .github/workflows/   CI/CD
 backend/             Express + OpenAI solver API
+docs/                operational runbooks and release notes
 ios/                 SwiftUI app + Fastlane + XcodeGen config
 scripts/             helper scripts for Mac build tooling and Windows backend deploy
 ```
@@ -76,3 +77,13 @@ Recommended GitHub variable:
 
 - `BACKEND_BASE_URL`
 
+Detailed release notes and failure recovery:
+
+- [docs/testflight-release-runbook.md](docs/testflight-release-runbook.md)
+
+Quick verification script:
+
+```bash
+python3 scripts/check_testflight_status.py \
+  --bundle-id com.we555.test-evowit
+```
