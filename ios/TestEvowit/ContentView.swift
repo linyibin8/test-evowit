@@ -37,7 +37,7 @@ struct ContentView: View {
             .sheet(item: $activePickerSource) { source in
                 switch source {
                 case .camera:
-                    QuestionCameraView { image, metadata in
+                    QuestionCameraView(captureProfile: viewModel.captureProfile) { image, metadata in
                         viewModel.setImage(
                             image,
                             source: .camera,
@@ -104,6 +104,22 @@ struct ContentView: View {
             Text("参考豆包爱学这类拍题产品的思路，先框选单题再识别，效果会比整页作业直接上传稳很多。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Capture Strategy")
+                    .font(.headline)
+
+                Picker("Capture Strategy", selection: $viewModel.captureProfile) {
+                    ForEach(QuestionCaptureProfile.allCases) { profile in
+                        Text(profile.title).tag(profile)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(viewModel.captureProfile.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack(spacing: 12) {
                 Button("拍照解题") {

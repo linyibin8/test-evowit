@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 enum ProblemSubject: String, CaseIterable, Identifiable, Codable {
@@ -45,6 +46,102 @@ enum GradeBand: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+enum QuestionCaptureProfile: String, CaseIterable, Identifiable, Codable {
+    case fast
+    case balanced
+    case precise
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fast:
+            return "Fast"
+        case .balanced:
+            return "Balanced"
+        case .precise:
+            return "Precise"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .fast:
+            return "Locks quickly for simple, clean questions."
+        case .balanced:
+            return "Best default for everyday homework shots."
+        case .precise:
+            return "Stricter locking for dense or messy worksheets."
+        }
+    }
+
+    var focusRect: CGRect {
+        switch self {
+        case .fast:
+            return CGRect(x: 0.14, y: 0.4, width: 0.72, height: 0.22)
+        case .balanced:
+            return CGRect(x: 0.12, y: 0.38, width: 0.76, height: 0.24)
+        case .precise:
+            return CGRect(x: 0.1, y: 0.34, width: 0.8, height: 0.3)
+        }
+    }
+
+    var previewAnalysisIntervalMs: Int {
+        switch self {
+        case .fast:
+            return 180
+        case .balanced:
+            return 250
+        case .precise:
+            return 320
+        }
+    }
+
+    var lockFramesRequired: Int {
+        switch self {
+        case .fast:
+            return 1
+        case .balanced:
+            return 2
+        case .precise:
+            return 3
+        }
+    }
+
+    var serverRequestIntervalMs: Int {
+        switch self {
+        case .fast:
+            return 1200
+        case .balanced:
+            return 900
+        case .precise:
+            return 700
+        }
+    }
+
+    var previewJpegMaxDimension: CGFloat {
+        switch self {
+        case .fast:
+            return 1080
+        case .balanced:
+            return 1280
+        case .precise:
+            return 1440
+        }
+    }
+
+    var previewJpegCompression: CGFloat {
+        switch self {
+        case .fast:
+            return 0.56
+        case .balanced:
+            return 0.62
+        case .precise:
+            return 0.72
+        }
+    }
+}
+
 enum QuestionDetectionSource: String, Codable {
     case guideFrame = "guide_frame"
     case localGuideVision = "local_guide_vision"
@@ -54,10 +151,14 @@ enum QuestionDetectionSource: String, Codable {
 }
 
 struct QuestionCaptureMetadata {
+    let captureProfile: QuestionCaptureProfile
     let cropApplied: Bool
     let cropSource: QuestionDetectionSource?
     let cropCoverage: Double?
     let focusRect: ServerNormalizedRect?
+    let lockFramesRequired: Int
+    let previewAnalysisIntervalMs: Int
+    let serverRequestIntervalMs: Int
     let originalImageWidth: Int?
     let originalImageHeight: Int?
     let previewDetectionSource: QuestionDetectionSource?
@@ -85,6 +186,10 @@ struct SolveClientTrace: Codable {
     let autoCropSource: String?
     let autoCropCoverage: Double?
     let ocrWarnings: [String]?
+    let captureProfile: String?
+    let lockFramesRequired: Int?
+    let previewAnalysisIntervalMs: Int?
+    let serverRequestIntervalMs: Int?
     let focusRect: ServerNormalizedRect?
     let appVersion: String?
     let buildNumber: String?

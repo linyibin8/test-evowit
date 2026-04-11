@@ -30,6 +30,10 @@ export interface SolveClientTrace {
   autoCropSource?: string;
   autoCropCoverage?: number;
   ocrWarnings?: string[];
+  captureProfile?: string;
+  lockFramesRequired?: number;
+  previewAnalysisIntervalMs?: number;
+  serverRequestIntervalMs?: number;
   focusRect?: NormalizedRect;
   appVersion?: string;
   buildNumber?: string;

@@ -6,6 +6,7 @@ final class ProblemSolverViewModel: ObservableObject {
     @Published var selectedSubject: ProblemSubject = .math
     @Published var answerStyle: AnswerStyle = .guided
     @Published var gradeBand: GradeBand = .middleSchool
+    @Published var captureProfile: QuestionCaptureProfile = .balanced
     @Published var questionHint: String = ""
     @Published var recognizedText: String = ""
     @Published var selectedImage: UIImage?
@@ -89,6 +90,10 @@ final class ProblemSolverViewModel: ObservableObject {
                 autoCropSource: captureMetadata?.cropSource?.rawValue,
                 autoCropCoverage: captureMetadata?.cropCoverage,
                 ocrWarnings: captureMetadata?.warnings.isEmpty == true ? nil : captureMetadata?.warnings,
+                captureProfile: captureMetadata?.captureProfile.rawValue ?? captureProfile.rawValue,
+                lockFramesRequired: captureMetadata?.lockFramesRequired ?? captureProfile.lockFramesRequired,
+                previewAnalysisIntervalMs: captureMetadata?.previewAnalysisIntervalMs ?? captureProfile.previewAnalysisIntervalMs,
+                serverRequestIntervalMs: captureMetadata?.serverRequestIntervalMs ?? captureProfile.serverRequestIntervalMs,
                 focusRect: captureMetadata?.focusRect,
                 appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                 buildNumber: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,

@@ -14,7 +14,7 @@ struct QuestionDetection {
 }
 
 enum QuestionDetector {
-    static let suggestedFocusRect = CGRect(x: 0.12, y: 0.38, width: 0.76, height: 0.24)
+    static let suggestedFocusRect = QuestionCaptureProfile.balanced.focusRect
 
     static func detectQuestion(
         in pixelBuffer: CVPixelBuffer,

@@ -4,10 +4,20 @@ import ImageIO
 import SwiftUI
 
 struct QuestionCameraView: View {
+    let captureProfile: QuestionCaptureProfile
     let onCapture: (UIImage, QuestionCaptureMetadata) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel = QuestionCameraViewModel()
+    @StateObject private var viewModel: QuestionCameraViewModel
+
+    init(
+        captureProfile: QuestionCaptureProfile,
+        onCapture: @escaping (UIImage, QuestionCaptureMetadata) -> Void
+    ) {
+        self.captureProfile = captureProfile
+        self.onCapture = onCapture
+        _viewModel = StateObject(wrappedValue: QuestionCameraViewModel(captureProfile: captureProfile))
+    }
 
     var body: some View {
         ZStack {
@@ -60,6 +70,10 @@ struct QuestionCameraView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white)
 
+                Text("Strategy: \(captureProfile.title)")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+
                 Text(viewModel.guidanceText)
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.82))
@@ -79,7 +93,11 @@ struct QuestionCameraView: View {
 
     private var preview: some View {
         ZStack(alignment: .bottom) {
-            QuestionCameraPreview(session: viewModel.session, detectedRect: viewModel.detectedRect)
+            QuestionCameraPreview(
+                session: viewModel.session,
+                detectedRect: viewModel.detectedRect,
+                fallbackRect: viewModel.previewFocusRect
+            )
                 .overlay(alignment: .topLeading) {
                     if viewModel.isCapturing {
                         ProgressView("Cropping and solving...")
@@ -106,6 +124,11 @@ struct QuestionCameraView: View {
                 .font(.footnote)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.78))
+
+            Text(captureProfile.subtitle)
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.68))
 
             Button {
                 viewModel.capturePhoto()
@@ -174,6 +197,7 @@ struct QuestionCameraView: View {
 struct QuestionCameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
     let detectedRect: CGRect?
+    let fallbackRect: CGRect
 
     func makeUIView(context: Context) -> CameraPreviewContainerView {
         let view = CameraPreviewContainerView()
@@ -183,6 +207,7 @@ struct QuestionCameraPreview: UIViewRepresentable {
 
     func updateUIView(_ uiView: CameraPreviewContainerView, context: Context) {
         uiView.detectedRect = detectedRect
+        uiView.fallbackRect = fallbackRect
     }
 }
 
@@ -192,6 +217,10 @@ final class CameraPreviewContainerView: UIView {
     private let frameLayer = CAShapeLayer()
 
     var detectedRect: CGRect? {
+        didSet { updateOverlay() }
+    }
+
+    var fallbackRect: CGRect = QuestionCaptureProfile.balanced.focusRect {
         didSet { updateOverlay() }
     }
 
@@ -233,7 +262,7 @@ final class CameraPreviewContainerView: UIView {
             return
         }
 
-        let normalized = detectedRect ?? QuestionDetector.suggestedFocusRect
+        let normalized = detectedRect ?? fallbackRect
         let metadataRect = CGRect(
             x: normalized.minX,
             y: 1 - normalized.maxY,
@@ -261,6 +290,7 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
     @Published var lockBadgeText = "Searching"
 
     let session = AVCaptureSession()
+    let captureProfile: QuestionCaptureProfile
 
     var captureHandler: ((UIImage, QuestionCaptureMetadata) -> Void)?
 
@@ -283,8 +313,22 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
     private var lastServerResponseTime: CFTimeInterval = 0
     private var serverDetectionInFlight = false
 
-    private var previewFocusRect: CGRect {
-        QuestionDetector.suggestedFocusRect
+    var previewFocusRect: CGRect {
+        captureProfile.focusRect
+    }
+
+    private var previewAnalysisInterval: CFTimeInterval {
+        Double(captureProfile.previewAnalysisIntervalMs) / 1000
+    }
+
+    private var serverRequestInterval: CFTimeInterval {
+        Double(captureProfile.serverRequestIntervalMs) / 1000
+    }
+
+    init(captureProfile: QuestionCaptureProfile) {
+        self.captureProfile = captureProfile
+        super.init()
+        guidanceText = "Using \(captureProfile.title) mode. Keep one question inside the guide."
     }
 
     func start() {
@@ -457,7 +501,7 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
         let hasRecentRemote = now - lastServerResponseTime < 1.8
 
         guard !serverDetectionInFlight,
-              now - lastServerRequestTime >= 0.9,
+              now - lastServerRequestTime >= serverRequestInterval,
               localDetection != nil || !hasRecentRemote,
               let jpegData = makePreviewJPEGData(from: pixelBuffer)
         else {
@@ -491,7 +535,7 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
             .oriented(forExifOrientation: Int32(CGImagePropertyOrientation.right.rawValue))
         let extent = oriented.extent.integral
         let longest = max(extent.width, extent.height)
-        let scale = longest > 0 ? min(1, 1280 / longest) : 1
+        let scale = longest > 0 ? min(1, captureProfile.previewJpegMaxDimension / longest) : 1
         let resized = scale < 1
             ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
             : oriented
@@ -500,7 +544,7 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
             return nil
         }
 
-        return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.62)
+        return UIImage(cgImage: cgImage).jpegData(compressionQuality: captureProfile.previewJpegCompression)
     }
 
     private func detectQuestionViaServer(
@@ -535,7 +579,7 @@ final class QuestionCameraViewModel: NSObject, ObservableObject {
         }
 
         lastLocalCandidate = detection
-        return localCandidateStreak >= 2 ? detection : nil
+        return localCandidateStreak >= captureProfile.lockFramesRequired ? detection : nil
     }
 
     private func isSimilar(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
@@ -557,7 +601,7 @@ extension QuestionCameraViewModel: AVCaptureVideoDataOutputSampleBufferDelegate 
         }
 
         let now = CACurrentMediaTime()
-        guard now - lastAnalysisTime >= 0.25 else {
+        guard now - lastAnalysisTime >= previewAnalysisInterval else {
             return
         }
         lastAnalysisTime = now
@@ -638,10 +682,14 @@ extension QuestionCameraViewModel: AVCapturePhotoCaptureDelegate {
                 }
 
                 let metadata = QuestionCaptureMetadata(
+                    captureProfile: self.captureProfile,
                     cropApplied: true,
                     cropSource: chosen?.source ?? .guideFrame,
                     cropCoverage: chosen?.coverage ?? Double(self.previewFocusRect.width * self.previewFocusRect.height),
                     focusRect: focusRect,
+                    lockFramesRequired: self.captureProfile.lockFramesRequired,
+                    previewAnalysisIntervalMs: self.captureProfile.previewAnalysisIntervalMs,
+                    serverRequestIntervalMs: self.captureProfile.serverRequestIntervalMs,
                     originalImageWidth: originalWidth,
                     originalImageHeight: originalHeight,
                     previewDetectionSource: previewDetection?.source,
