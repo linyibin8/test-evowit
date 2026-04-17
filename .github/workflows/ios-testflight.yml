@@ -28,6 +28,8 @@ jobs:
       TESTFLIGHT_GROUPS: ${{ secrets.TESTFLIGHT_GROUPS }}
       BACKEND_BASE_URL: ${{ vars.BACKEND_BASE_URL }}
       BUNDLE_GEMFILE: ${{ github.workspace }}/ios/Gemfile
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
     steps:
       - uses: actions/checkout@v4
 
@@ -35,6 +37,20 @@ jobs:
         run: |
           caffeinate -dimsu &
           echo "Started caffeinate to reduce self-hosted runner sleep during archive/upload."
+
+      - name: Prepare keychain for codesign
+        shell: bash
+        run: |
+          if [[ -z "${MAC_KEYCHAIN_PASSWORD:-}" ]]; then
+            echo "MAC_KEYCHAIN_PASSWORD is not set on the self-hosted runner." >&2
+            exit 1
+          fi
+
+          security list-keychains -d user -s "${HOME}/Library/Keychains/login.keychain-db" "/Library/Keychains/System.keychain"
+          security default-keychain -d user -s "${HOME}/Library/Keychains/login.keychain-db"
+          security unlock-keychain -p "${MAC_KEYCHAIN_PASSWORD}" "${HOME}/Library/Keychains/login.keychain-db"
+          security set-keychain-settings -lut 21600 "${HOME}/Library/Keychains/login.keychain-db"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${MAC_KEYCHAIN_PASSWORD}" "${HOME}/Library/Keychains/login.keychain-db"
 
       - name: Install Ruby gems
         shell: bash
