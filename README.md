@@ -1,89 +1,55 @@
 # test-evowit
 
-`test-evowit` is a student-facing iPhone app for photo-based homework solving.
+`test-evowit` is now a fresh iPhone MVP focused on one job only: real-time single-question recognition from the camera.
 
-It is optimized for a fast MVP path:
+## Current scope
 
-- iPhone app for camera capture and gallery import
-- Node.js backend that sends homework photos to `gpt-5.4`
-- structured answer output: problem text, answer, steps, explanations, and follow-up practice
-- GitHub Actions pipeline for backend CI and Mac-based TestFlight delivery
+- live camera preview with a centered single-question guide frame
+- on-device Vision OCR for preview text
+- question block segmentation to decide which exact question is currently in frame
+- cropped single-question snapshot output
+- lightweight intent extraction for question number, subject, and question type
+- iOS TestFlight delivery via XcodeGen + fastlane + GitHub Actions
 
-## Why this approach
-
-I reviewed current GitHub directions before locking the architecture:
-
-- [Pix2Text](https://github.com/breezedeus/Pix2Text) is strong for OCR and formula extraction, but is heavier than needed for a first TestFlight build.
-- [Texify](https://github.com/VikParuchuri/texify) is promising for formula-to-LaTeX, but it adds a separate model-serving path.
-- Shipping fastest with the highest chance of success is a hosted multimodal solver path: photo upload -> structured `gpt-5.4` analysis -> simple, polished iOS client.
-
-This repo keeps the server modular so local OCR or math-specific engines can be added later.
-
-## Project layout
+## Repo layout
 
 ```text
-.github/workflows/   CI/CD
-backend/             Express + OpenAI solver API
-docs/                operational runbooks and release notes
-ios/                 SwiftUI app + Fastlane + XcodeGen config
-scripts/             helper scripts for Mac build tooling and Windows backend deploy
+.github/workflows/   iOS CI/CD and TestFlight automation
+ios/                 SwiftUI app, Fastlane, XcodeGen config
+scripts/             XcodeGen install and App Store helper scripts
 ```
 
-## Backend setup
-
-```bash
-cd backend
-cp .env.example .env
-npm install
-npm run dev
-```
-
-Default server:
-
-```text
-http://0.0.0.0:21080
-```
-
-## iOS setup on Mac
+## Local iOS build on Mac
 
 ```bash
 cd ios
 bash ../scripts/install_xcodegen.sh
-bundle install
+bundle _2.4.22_ config set path vendor/bundle
+bundle _2.4.22_ install
 xcodegen generate
 open test-evowit.xcodeproj
 ```
 
-## TestFlight workflow
+## TestFlight flow
 
-The intended release path is:
+The release path is:
 
-1. Push to GitHub `main`
-2. GitHub Actions runs backend checks
-3. GitHub Actions on the self-hosted Mac runner generates the Xcode project
-4. Fastlane archives and uploads the build to TestFlight
+1. Push to `main`
+2. GitHub Actions runs the iOS TestFlight workflow on the self-hosted Mac runner
+3. fastlane generates the project, archives the app, and uploads the build
 
-Required GitHub secrets:
+Required secrets:
 
 - `APPLE_ID`
 - `APP_SPECIFIC_PASSWORD`
 - `APPLE_TEAM_ID`
-- `APP_STORE_CONNECT_KEY_ID` optional but recommended
-- `APP_STORE_CONNECT_ISSUER_ID` optional but recommended
-- `APP_STORE_CONNECT_PRIVATE_KEY` optional but recommended
-- `TESTFLIGHT_GROUPS` optional, comma-separated group names
+- `MAC_KEYCHAIN_PASSWORD`
 
-Recommended GitHub variable:
+Optional but recommended:
 
-- `BACKEND_BASE_URL`
+- `APP_STORE_CONNECT_KEY_ID`
+- `APP_STORE_CONNECT_ISSUER_ID`
+- `APP_STORE_CONNECT_PRIVATE_KEY`
+- `TESTFLIGHT_GROUPS`
 
-Detailed release notes and failure recovery:
-
-- [docs/testflight-release-runbook.md](docs/testflight-release-runbook.md)
-
-Quick verification script:
-
-```bash
-python3 scripts/check_testflight_status.py \
-  --bundle-id com.we555.test-evowit
-```
+The app declares `ITSAppUsesNonExemptEncryption=false` to reduce export compliance friction for this OCR-only MVP.
