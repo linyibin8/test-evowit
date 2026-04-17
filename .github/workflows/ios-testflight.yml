@@ -41,10 +41,10 @@ jobs:
         run: |
           ruby -v
           gem -v
-          gem install bundler --no-document --user-install
+          gem install bundler -v 2.4.22 --no-document --user-install
           export PATH="$HOME/.gem/ruby/$(ruby -e 'print RbConfig::CONFIG[\"ruby_version\"]')/bin:$PATH"
-          bundle config set path vendor/bundle
-          bundle install --jobs 4 --retry 3
+          bundle _2.4.22_ config set path vendor/bundle
+          bundle _2.4.22_ install --jobs 4 --retry 3
 
       - name: Prepare App Store Connect key
         shell: bash
@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           export PATH="$HOME/.gem/ruby/$(ruby -e 'print RbConfig::CONFIG[\"ruby_version\"]')/bin:$PATH"
-          bundle exec fastlane beta
+          bundle _2.4.22_ exec fastlane beta
 
       - name: Distribute build to beta groups
         if: ${{ env.APP_STORE_CONNECT_KEY_PATH != '' && env.APP_STORE_CONNECT_ISSUER_ID != '' && env.APP_STORE_CONNECT_KEY_ID != '' }}
