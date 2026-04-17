@@ -154,6 +154,18 @@ class AppStoreClient:
         return self.request("POST", "/betaAppReviewSubmissions", payload=payload).get("data")
 
 
+def describe_build(build: dict, pre_version: Optional[str]) -> dict:
+    attrs = build.get("attributes", {})
+    return {
+        "id": build["id"],
+        "version": attrs.get("version"),
+        "shortVersion": pre_version,
+        "processingState": attrs.get("processingState"),
+        "uploadedDate": attrs.get("uploadedDate"),
+        "usesNonExemptEncryption": attrs.get("usesNonExemptEncryption"),
+    }
+
+
 def choose_build(builds_payload: dict, build_version: Optional[str], short_version: Optional[str]):
     builds = builds_payload.get("data", [])
     included = builds_payload.get("included", [])
@@ -192,6 +204,59 @@ def choose_build(builds_payload: dict, build_version: Optional[str], short_versi
     return build, pre_version
 
 
+def wait_for_build_processing(
+    client: AppStoreClient,
+    app_id: str,
+    build_version: Optional[str],
+    short_version: Optional[str],
+    timeout: int,
+    interval: int,
+):
+    deadline = time.time() + timeout
+    last_snapshot = None
+    last_missing = False
+
+    while True:
+        try:
+            builds_payload = client.list_builds(app_id)
+            build, pre_version = choose_build(builds_payload, build_version, short_version)
+        except RuntimeError as error:
+            if not (build_version or short_version):
+                raise
+            if time.time() >= deadline:
+                raise RuntimeError(
+                    f"Timed out waiting for build version={build_version!r} short_version={short_version!r} to appear"
+                ) from error
+            if not last_missing:
+                print(
+                    f"Waiting for build version={build_version!r} shortVersion={short_version!r} to appear..."
+                )
+                last_missing = True
+            time.sleep(interval)
+            continue
+
+        last_missing = False
+        snapshot = describe_build(build, pre_version)
+        if snapshot != last_snapshot:
+            print("Selected build:", json.dumps(snapshot, ensure_ascii=False))
+            last_snapshot = snapshot
+
+        state = snapshot.get("processingState")
+        if state == "VALID":
+            return build, pre_version
+        if state in {"FAILED", "INVALID"}:
+            raise RuntimeError(
+                f"Build version={snapshot.get('version')} shortVersion={snapshot.get('shortVersion')} failed processing with state={state}"
+            )
+        if time.time() >= deadline:
+            raise RuntimeError(
+                f"Timed out waiting for build version={snapshot.get('version')} shortVersion={snapshot.get('shortVersion')} to reach VALID (last state={state})"
+            )
+
+        print(f"Waiting for build processingState=VALID (current={state})...")
+        time.sleep(interval)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle-id", required=True)
@@ -199,6 +264,9 @@ def main() -> int:
     parser.add_argument("--short-version")
     parser.add_argument("--group-names", default="")
     parser.add_argument("--all-groups", action="store_true")
+    parser.add_argument("--wait-for-processing", action="store_true")
+    parser.add_argument("--wait-timeout", type=int, default=900)
+    parser.add_argument("--wait-interval", type=int, default=15)
     args = parser.parse_args()
 
     key_id = os.environ["APP_STORE_CONNECT_KEY_ID"]
@@ -215,26 +283,25 @@ def main() -> int:
     app_name = app.get("attributes", {}).get("name", "")
     print(f"App: {app_name} ({args.bundle_id}) id={app_id}")
 
-    builds_payload = client.list_builds(app_id)
-    build, pre_version = choose_build(builds_payload, args.build_version, args.short_version)
+    if args.wait_for_processing:
+        build, pre_version = wait_for_build_processing(
+            client,
+            app_id,
+            args.build_version,
+            args.short_version,
+            args.wait_timeout,
+            args.wait_interval,
+        )
+    else:
+        builds_payload = client.list_builds(app_id)
+        build, pre_version = choose_build(builds_payload, args.build_version, args.short_version)
+
     build_id = build["id"]
     build_attrs = build.get("attributes", {})
     build_version = build_attrs.get("version")
 
-    print(
-        "Selected build:",
-        json.dumps(
-            {
-                "id": build_id,
-                "version": build_version,
-                "shortVersion": pre_version,
-                "processingState": build_attrs.get("processingState"),
-                "uploadedDate": build_attrs.get("uploadedDate"),
-                "usesNonExemptEncryption": build_attrs.get("usesNonExemptEncryption"),
-            },
-            ensure_ascii=False,
-        ),
-    )
+    if not args.wait_for_processing:
+        print("Selected build:", json.dumps(describe_build(build, pre_version), ensure_ascii=False))
 
     if build_attrs.get("usesNonExemptEncryption") is False:
         print("Build already declares usesNonExemptEncryption=false")
