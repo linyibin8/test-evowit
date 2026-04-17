@@ -9,63 +9,60 @@ enum QuestionSegmentationEngine {
         orientation: CGImagePropertyOrientation,
         focusRect: CGRect
     ) -> DetectedQuestionBlock? {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLanguages = ["zh-Hans", "en-US"]
-        request.recognitionLevel = .fast
-        request.usesLanguageCorrection = false
-        request.minimumTextHeight = 0.014
-
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+        let lines = recognizeLines(with: handler)
+        return buildBestQuestion(from: lines, focusRect: focusRect)
+    }
 
-        do {
-            try handler.perform([request])
-        } catch {
+    static func detectBestQuestion(in image: UIImage, focusRect: CGRect) -> DetectedQuestionBlock? {
+        let normalizedImage = normalized(image)
+        guard let cgImage = normalizedImage.cgImage else {
             return nil
         }
 
-        let lines = (request.results ?? []).compactMap { RecognizedLine(observation: $0) }
-        guard !lines.isEmpty else {
-            return nil
-        }
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
+        let lines = recognizeLines(with: handler)
+        return buildBestQuestion(from: lines, focusRect: focusRect)
+    }
 
-        let candidates = deduplicate(buildSequentialClusters(from: lines) + buildAnchoredClusters(from: lines))
-        let ranked = candidates
-            .map { candidate in
-                (candidate, candidate.score(relativeTo: focusRect))
-            }
-            .filter { entry in
-                entry.0.characterCount >= 6
-                    && entry.0.rect.width >= 0.16
-                    && entry.0.rect.height >= 0.05
-                    && entry.1 >= 18
-            }
-            .sorted { lhs, rhs in
-                if abs(lhs.1 - rhs.1) > 0.001 {
-                    return lhs.1 > rhs.1
-                }
-                return lhs.0.characterCount > rhs.0.characterCount
-            }
+    static func analyzeStillImage(
+        _ image: UIImage,
+        focusRect: CGRect,
+        source: QuestionResultSource
+    ) -> StillImageQuestionAnalysis {
+        let normalizedImage = normalized(image)
+        let detectedBlock = detectBestQuestion(in: normalizedImage, focusRect: focusRect)
 
-        guard let best = ranked.first?.0 else {
-            return nil
-        }
+        let primaryRect = detectedBlock?.normalizedRect ?? expanded(focusRect, padding: 0.10)
+        let fallbackRect = CGRect(x: 0.06, y: 0.10, width: 0.88, height: 0.76)
+        let primaryCrop = cropQuestion(from: normalizedImage, normalizedRect: primaryRect, padding: detectedBlock == nil ? 0.02 : 0.08)
+        let fallbackCrop = cropQuestion(from: normalizedImage, normalizedRect: fallbackRect, padding: 0.02)
+        let primaryOCR = primaryCrop.map { QuestionOCRService.recognizeQuestion(in: $0) }
+        let fallbackOCR = fallbackCrop.map { QuestionOCRService.recognizeQuestion(in: $0) }
 
-        let text = normalize(best.text)
-        guard !text.isEmpty else {
-            return nil
-        }
+        let shouldUseFallback = detectedBlock == nil || shouldPrefer(fallbackOCR, over: primaryOCR)
+        let finalCrop = shouldUseFallback ? (fallbackCrop ?? primaryCrop) : (primaryCrop ?? fallbackCrop)
+        let finalOCR = shouldUseFallback ? (fallbackOCR ?? primaryOCR) : (primaryOCR ?? fallbackOCR)
+        let finalText = normalize(finalOCR?.text ?? detectedBlock?.previewText ?? "")
+        let lineCount = finalOCR?.lineCount ?? detectedBlock?.lineCount ?? 0
+        let intent = QuestionIntentRecognizer.recognize(text: finalText, lineCount: lineCount)
+        let summary = makeSummary(
+            source: source,
+            ocr: finalOCR,
+            fallbackUsed: shouldUseFallback,
+            previewLineCount: detectedBlock?.lineCount ?? 0
+        )
 
-        let rect = expanded(best.rect, padding: 0.06)
-        let questionNumber = QuestionIntentRecognizer.extractQuestionNumber(from: text)
-        let confidence = min(0.98, max(0.42, (ranked.first?.1 ?? 0) / 100))
-
-        return DetectedQuestionBlock(
-            normalizedRect: rect,
-            previewText: text,
-            lineCount: best.lines.count,
-            confidence: confidence,
-            questionNumber: questionNumber,
-            blockID: blockID(for: rect, text: text)
+        return StillImageQuestionAnalysis(
+            detectedRect: shouldUseFallback ? nil : detectedBlock?.normalizedRect,
+            snapshot: LiveQuestionSnapshot(
+                text: finalText,
+                cropImage: finalCrop,
+                intent: intent,
+                ocrSummary: summary,
+                source: source
+            ),
+            usedFallbackCrop: shouldUseFallback
         )
     }
 
@@ -95,6 +92,68 @@ enum QuestionSegmentationEngine {
         }
 
         return UIImage(cgImage: cropped, scale: normalizedImage.scale, orientation: .up)
+    }
+
+    private static func recognizeLines(with handler: VNImageRequestHandler) -> [RecognizedLine] {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLanguages = ["zh-Hans", "en-US"]
+        request.recognitionLevel = .fast
+        request.usesLanguageCorrection = false
+        request.minimumTextHeight = 0.012
+
+        do {
+            try handler.perform([request])
+        } catch {
+            return []
+        }
+
+        return (request.results ?? []).compactMap { RecognizedLine(observation: $0) }
+    }
+
+    private static func buildBestQuestion(from lines: [RecognizedLine], focusRect: CGRect) -> DetectedQuestionBlock? {
+        guard !lines.isEmpty else {
+            return nil
+        }
+
+        let candidates = deduplicate(buildSequentialClusters(from: lines) + buildAnchoredClusters(from: lines))
+        let ranked = candidates
+            .map { candidate in
+                (candidate, candidate.score(relativeTo: focusRect))
+            }
+            .filter { entry in
+                entry.0.characterCount >= 8
+                    && entry.0.rect.width >= 0.15
+                    && entry.0.rect.height >= 0.05
+                    && entry.1 >= 20
+            }
+            .sorted { lhs, rhs in
+                if abs(lhs.1 - rhs.1) > 0.001 {
+                    return lhs.1 > rhs.1
+                }
+                return lhs.0.characterCount > rhs.0.characterCount
+            }
+
+        guard let best = ranked.first?.0 else {
+            return nil
+        }
+
+        let text = normalize(best.text)
+        guard !text.isEmpty else {
+            return nil
+        }
+
+        let rect = expanded(best.rect, padding: 0.06)
+        let questionNumber = QuestionIntentRecognizer.extractQuestionNumber(from: text)
+        let confidence = min(0.98, max(0.40, (ranked.first?.1 ?? 0) / 100))
+
+        return DetectedQuestionBlock(
+            normalizedRect: rect,
+            previewText: text,
+            lineCount: best.lines.count,
+            confidence: confidence,
+            questionNumber: questionNumber,
+            blockID: blockID(for: rect, text: text)
+        )
     }
 
     private static func buildSequentialClusters(from lines: [RecognizedLine]) -> [QuestionCluster] {
@@ -128,10 +187,10 @@ enum QuestionSegmentationEngine {
             var last = line
             var cursor = index + 1
 
-            while cursor < sorted.count && selection.count < 6 {
+            while cursor < sorted.count && selection.count < 7 {
                 let candidate = sorted[cursor]
                 let gap = max(0, last.rect.minY - candidate.rect.maxY)
-                if gap > max(0.08, last.rect.height * 2.6) {
+                if gap > max(0.08, last.rect.height * 2.8) {
                     break
                 }
 
@@ -182,6 +241,53 @@ enum QuestionSegmentationEngine {
         return unique
     }
 
+    private static func shouldPrefer(_ candidate: QuestionOCRResult?, over current: QuestionOCRResult?) -> Bool {
+        guard let candidate else {
+            return false
+        }
+
+        guard let current else {
+            return !candidate.text.isEmpty
+        }
+
+        let candidateRank = qualityRank(candidate.quality)
+        let currentRank = qualityRank(current.quality)
+        if candidateRank != currentRank {
+            return candidateRank > currentRank
+        }
+
+        return compact(candidate.text).count > compact(current.text).count + 8
+    }
+
+    private static func qualityRank(_ quality: QuestionOCRQuality) -> Int {
+        switch quality {
+        case .good:
+            return 3
+        case .needsCrop:
+            return 2
+        case .weak:
+            return 1
+        }
+    }
+
+    private static func makeSummary(
+        source: QuestionResultSource,
+        ocr: QuestionOCRResult?,
+        fallbackUsed: Bool,
+        previewLineCount: Int
+    ) -> String {
+        let cropMode = fallbackUsed ? "中心兜底裁切" : "单题裁切"
+
+        guard let ocr else {
+            if previewLineCount > 0 {
+                return "\(source.rawValue) | 预览 OCR | \(previewLineCount) 行 | \(cropMode)"
+            }
+            return "\(source.rawValue) | 未识别到清晰文本 | \(cropMode)"
+        }
+
+        return "\(source.rawValue) | \(ocr.quality.rawValue) | \(ocr.lineCount) 行 | \(cropMode) | \(ocr.preprocessProfile)"
+    }
+
     private static func expanded(_ rect: CGRect, padding: CGFloat) -> CGRect {
         let dx = max(0.02, rect.width * padding)
         let dy = max(0.02, rect.height * padding)
@@ -194,6 +300,10 @@ enum QuestionSegmentationEngine {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
+    }
+
+    private static func compact(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
     }
 
     private static func blockID(for rect: CGRect, text: String) -> String {
@@ -255,7 +365,7 @@ private struct RecognizedLine {
         let rect = observation.boundingBox.standardized
 
         guard !text.isEmpty,
-              rect.width > 0.04,
+              rect.width > 0.03,
               rect.height > 0.012
         else {
             return nil
@@ -279,10 +389,10 @@ private struct RecognizedLine {
     }
 
     var hasProblemSignal: Bool {
-        matches(#"[0-9+\-×÷=]"#) || matches(#"(计算|求|解|填空|阅读|choose|translate)"#)
+        matches(#"[0-9+\-×÷=/]"#) || matches(#"(计算|求解|解答|填空|阅读|选择|证明|应用题|方程|函数|choose|translate)"#)
     }
 
-    func matches(_ pattern: String) -> Bool {
+    private func matches(_ pattern: String) -> Bool {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
             return false
         }
@@ -327,19 +437,19 @@ private struct QuestionCluster {
         let focusCoverage = overlapArea / focusArea
         let clusterFocusCoverage = overlapArea / clusterArea
         let centerDistance = hypot(rect.midX - focusRect.midX, rect.midY - focusRect.midY)
-        let operatorCount = regexMatches(#"[+\-×÷=]"#, in: text)
-        let linePenalty = max(0, lines.count - 6) * 8
-        let oversizedPenalty = max(0, area - 0.40) * 180
+        let operatorCount = regexMatches(#"[+\-×÷=/]"#, in: text)
+        let linePenalty = max(0, lines.count - 7) * 8
+        let oversizedPenalty = max(0, area - 0.42) * 180
         let multiAnchorPenalty = max(0, anchorCount - 1) * 18
 
         return Double(characterCount)
             + Double(lines.count * 18)
-            + Double(anchorCount * 24)
+            + Double(anchorCount * 28)
             + Double(operatorCount * 3)
-            + averageConfidence * 28
-            + focusCoverage * 140
-            + clusterFocusCoverage * 40
-            + max(0, 1 - Double(centerDistance) * 3.2) * 18
+            + averageConfidence * 30
+            + focusCoverage * 132
+            + clusterFocusCoverage * 46
+            + max(0, 1 - Double(centerDistance) * 3.0) * 18
             - Double(linePenalty)
             - Double(multiAnchorPenalty)
             - oversizedPenalty
@@ -360,8 +470,8 @@ private struct QuestionCluster {
         let horizontalOverlap = overlapWidth / max(min(rect.width, line.rect.width), 0.001)
         let centerDistance = abs(rect.midX - line.rect.midX)
 
-        return gap <= max(0.06, averageHeight * 2.1)
-            && (horizontalOverlap > 0.1 || centerDistance < 0.26)
+        return gap <= max(0.06, averageHeight * 2.2)
+            && (horizontalOverlap > 0.10 || centerDistance < 0.28)
     }
 
     private func regexMatches(_ pattern: String, in text: String) -> Int {

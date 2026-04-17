@@ -5,7 +5,7 @@ settings:
   base:
     SWIFT_VERSION: 5.0
     MARKETING_VERSION: 2.0.0
-    CURRENT_PROJECT_VERSION: 2026041701
+    CURRENT_PROJECT_VERSION: 2026041702
     DEVELOPMENT_TEAM: 76PHSCHPCK
     CODE_SIGN_STYLE: Automatic
     ALWAYS_SEARCH_USER_PATHS: NO
@@ -45,4 +45,5 @@ targets:
         CFBundleDisplayName: test-evowit
         UILaunchScreen: {}
         NSCameraUsageDescription: 允许使用相机实时识别题目，并裁切当前单题画面。
+        NSPhotoLibraryUsageDescription: 允许从相册导入题目图片并识别单题内容。
         ITSAppUsesNonExemptEncryption: false

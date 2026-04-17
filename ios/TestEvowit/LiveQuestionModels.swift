@@ -41,6 +41,14 @@ enum QuestionOCRQuality: String {
     case weak = "较弱"
 }
 
+enum QuestionResultSource: String {
+    case livePreview = "实时预览"
+    case liveLocked = "实时锁定"
+    case currentFrame = "当前画面"
+    case photoCapture = "拍照识别"
+    case photoLibrary = "相册导入"
+}
+
 struct QuestionOCRResult {
     let text: String
     let lineCount: Int
@@ -53,4 +61,11 @@ struct LiveQuestionSnapshot {
     let cropImage: UIImage?
     let intent: LiveQuestionIntentInfo?
     let ocrSummary: String
+    let source: QuestionResultSource
+}
+
+struct StillImageQuestionAnalysis {
+    let detectedRect: CGRect?
+    let snapshot: LiveQuestionSnapshot
+    let usedFallbackCrop: Bool
 }

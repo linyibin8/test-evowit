@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 struct QuestionCaptureProfile {
     let focusRect: CGRect
@@ -8,9 +8,9 @@ struct QuestionCaptureProfile {
     let stableFramesRequired: Int
 
     static let live = QuestionCaptureProfile(
-        focusRect: CGRect(x: 0.08, y: 0.18, width: 0.84, height: 0.62),
-        previewInterval: 0.32,
-        accurateRefreshInterval: 1.0,
-        stableFramesRequired: 2
+        focusRect: CGRect(x: 0.06, y: 0.14, width: 0.88, height: 0.68),
+        previewInterval: 0.24,
+        accurateRefreshInterval: 0.8,
+        stableFramesRequired: 1
     )
 }
