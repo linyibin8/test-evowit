@@ -99,27 +99,27 @@ jobs:
         run: |
           python3 -m pip install --quiet pyjwt requests cryptography || true
           build_version="$(python3 - <<'PY'
-from pathlib import Path
-import re
+          from pathlib import Path
+          import re
 
-text = Path("ios/project.yml").read_text(encoding="utf-8")
-match = re.search(r"CURRENT_PROJECT_VERSION:\s*(\d+)", text)
-if not match:
-    raise SystemExit("CURRENT_PROJECT_VERSION not found in ios/project.yml")
-print(match.group(1))
-PY
-)"
+          text = Path("ios/project.yml").read_text(encoding="utf-8")
+          match = re.search(r"CURRENT_PROJECT_VERSION:\s*(\d+)", text)
+          if not match:
+              raise SystemExit("CURRENT_PROJECT_VERSION not found in ios/project.yml")
+          print(match.group(1))
+          PY
+          )"
           short_version="$(python3 - <<'PY'
-from pathlib import Path
-import re
+          from pathlib import Path
+          import re
 
-text = Path("ios/project.yml").read_text(encoding="utf-8")
-match = re.search(r"MARKETING_VERSION:\s*([^\s]+)", text)
-if not match:
-    raise SystemExit("MARKETING_VERSION not found in ios/project.yml")
-print(match.group(1))
-PY
-)"
+          text = Path("ios/project.yml").read_text(encoding="utf-8")
+          match = re.search(r"MARKETING_VERSION:\s*([^\s]+)", text)
+          if not match:
+              raise SystemExit("MARKETING_VERSION not found in ios/project.yml")
+          print(match.group(1))
+          PY
+          )"
           python3 scripts/distribute_testflight_build.py \
             --bundle-id com.we555.test-evowit \
             --build-version "${build_version}" \
