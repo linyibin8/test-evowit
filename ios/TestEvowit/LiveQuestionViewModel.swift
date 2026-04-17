@@ -471,7 +471,6 @@ final class LiveQuestionViewModel: NSObject, ObservableObject {
 
     private func makeFrameImage(from pixelBuffer: CVPixelBuffer) -> UIImage? {
         let oriented = CIImage(cvPixelBuffer: pixelBuffer)
-            .oriented(forExifOrientation: Int32(CGImagePropertyOrientation.right.rawValue))
 
         guard let cgImage = ciContext.createCGImage(oriented, from: oriented.extent) else {
             return nil
@@ -499,7 +498,7 @@ extension LiveQuestionViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         let frameImage = makeFrameImage(from: pixelBuffer)
         let detected = QuestionSegmentationEngine.detectBestQuestion(
             in: pixelBuffer,
-            orientation: .right,
+            orientation: .up,
             focusRect: profile.focusRect
         )
         let stable = stableBlock(from: detected)
