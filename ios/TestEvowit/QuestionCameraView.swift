@@ -2,22 +2,10 @@ import AVFoundation
 import CoreImage
 import ImageIO
 import SwiftUI
+import UIKit
 
 struct QuestionCameraView: View {
-    let captureProfile: QuestionCaptureProfile
-    let onCapture: (UIImage, QuestionCaptureMetadata) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel: QuestionCameraViewModel
-
-    init(
-        captureProfile: QuestionCaptureProfile,
-        onCapture: @escaping (UIImage, QuestionCaptureMetadata) -> Void
-    ) {
-        self.captureProfile = captureProfile
-        self.onCapture = onCapture
-        _viewModel = StateObject(wrappedValue: QuestionCameraViewModel(captureProfile: captureProfile))
-    }
+    @StateObject private var viewModel = QuestionCameraViewModel()
 
     var body: some View {
         ZStack {
@@ -34,10 +22,6 @@ struct QuestionCameraView: View {
             }
         }
         .onAppear {
-            viewModel.captureHandler = { image, metadata in
-                onCapture(image, metadata)
-                dismiss()
-            }
             viewModel.start()
         }
         .onDisappear {
@@ -46,45 +30,27 @@ struct QuestionCameraView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 14) {
-            HStack {
-                Button("Close") {
-                    dismiss()
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Live OCR")
+                .font(.system(size: 30, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 
-                Spacer()
+            Text("Keep one question inside the center frame. The app continuously outputs the exact question the camera sees right now.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.82))
 
-                Text("Auto Question Camera")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.white)
-
-                Spacer()
-
-                Color.clear
-                    .frame(width: 44, height: 1)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Keep one question inside the center frame. The app locks only when that frame looks like a single question.")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white)
-
-                Text("Strategy: \(captureProfile.title)")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.88))
-
-                Text(viewModel.guidanceText)
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.82))
+            HStack(spacing: 10) {
+                infoChip(viewModel.statusText, accent: viewModel.detectedRect == nil ? .white : .green)
+                infoChip("On-device Vision OCR", accent: .cyan)
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 18)
+        .padding(.top, 20)
         .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             LinearGradient(
-                colors: [Color.black.opacity(0.78), Color.black.opacity(0.15)],
+                colors: [Color.black.opacity(0.82), Color.black.opacity(0.18)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -92,61 +58,55 @@ struct QuestionCameraView: View {
     }
 
     private var preview: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .topLeading) {
             QuestionCameraPreview(
                 session: viewModel.session,
                 detectedRect: viewModel.detectedRect,
                 fallbackRect: viewModel.previewFocusRect
             )
-                .overlay(alignment: .topLeading) {
-                    if viewModel.isCapturing {
-                        ProgressView("Cropping and solving...")
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .padding(20)
-                    } else if viewModel.detectedRect != nil {
-                        statusBadge(viewModel.lockBadgeText)
-                            .padding(20)
-                    } else {
-                        statusBadge("Searching for a single question")
-                            .padding(20)
-                    }
-                }
+            .background(Color.black)
+
+            if viewModel.isRecognizing {
+                statusBadge("Refreshing current question")
+                    .padding(20)
+            } else if viewModel.detectedRect != nil {
+                statusBadge("Current question locked")
+                    .padding(20)
+            } else {
+                statusBadge("Searching for one question")
+                    .padding(20)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
     }
 
     private var footer: some View {
-        VStack(spacing: 14) {
-            Text("If the frame looks right, tap once. The app will run one more strong crop check, then upload automatically.")
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.78))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                Text("Current Question")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
 
-            Text(captureProfile.subtitle)
-                .font(.caption)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.68))
+                Spacer()
 
-            Button {
-                viewModel.capturePhoto()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 78, height: 78)
-
-                    Circle()
-                        .stroke(Color.black.opacity(0.12), lineWidth: 4)
-                        .frame(width: 66, height: 66)
+                if viewModel.isRecognizing {
+                    ProgressView()
+                        .tint(.white)
+                        .controlSize(.small)
                 }
             }
-            .disabled(viewModel.isCapturing || !viewModel.isSessionReady || viewModel.detectedRect == nil)
 
-            Text(viewModel.detectedRect == nil ? "Wait for the green frame before capturing." : "Ready to capture.")
-                .font(.caption)
+            ScrollView {
+                Text(viewModel.currentQuestionText.isEmpty ? "No stable single question is locked yet. Keep only the question you want to read inside the frame and the text below will update live." : viewModel.currentQuestionText)
+                    .font(.body)
+                    .foregroundStyle(viewModel.currentQuestionText.isEmpty ? .white.opacity(0.72) : .white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(minHeight: 120, maxHeight: 220)
+
+            Text(viewModel.guidanceText)
+                .font(.footnote)
                 .foregroundStyle(.white.opacity(0.7))
         }
         .padding(.horizontal, 20)
@@ -154,7 +114,7 @@ struct QuestionCameraView: View {
         .padding(.bottom, 28)
         .background(
             LinearGradient(
-                colors: [Color.black.opacity(0.12), Color.black.opacity(0.82)],
+                colors: [Color.black.opacity(0.18), Color.black.opacity(0.88)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -167,21 +127,25 @@ struct QuestionCameraView: View {
                 .font(.system(size: 42))
                 .foregroundStyle(.white)
 
-            Text("Camera access is required.")
+            Text("Camera Access Needed")
                 .font(.title3.bold())
                 .foregroundStyle(.white)
 
-            Text("Enable camera permission in iPhone Settings, then reopen the capture screen.")
+            Text("Enable camera permission in iPhone Settings, then reopen this screen.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.82))
-
-            Button("Close") {
-                dismiss()
-            }
-            .buttonStyle(.borderedProminent)
         }
         .padding(28)
+    }
+
+    private func infoChip(_ title: String, accent: Color) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(accent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.08), in: Capsule())
     }
 
     private func statusBadge(_ title: String) -> some View {
@@ -191,6 +155,304 @@ struct QuestionCameraView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.black.opacity(0.48), in: Capsule())
+    }
+}
+
+final class QuestionCameraViewModel: NSObject, ObservableObject {
+    @Published var detectedRect: CGRect?
+    @Published var guidanceText = "Keep one complete question inside the center frame and avoid showing two questions at once."
+    @Published var statusText = "Waiting for camera"
+    @Published var currentQuestionText = ""
+    @Published var isRecognizing = false
+    @Published var isSessionReady = false
+    @Published var permissionDenied = false
+
+    let session = AVCaptureSession()
+
+    private let sessionQueue = DispatchQueue(label: "testevowit.live.camera.session")
+    private let analysisQueue = DispatchQueue(label: "testevowit.live.camera.analysis")
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let ciContext = CIContext(options: nil)
+    private let focusRect = QuestionCaptureProfile.balanced.focusRect
+
+    private var isConfigured = false
+    private var lastAnalysisTime: CFTimeInterval = 0
+    private var lastRecognitionRequestTime: CFTimeInterval = 0
+    private var recognitionSignatureInFlight: String?
+    private var lastCompletedRecognitionSignature: String?
+    private var lastCompletedRecognitionTime: CFTimeInterval = 0
+
+    private var activeQuestionSignature: String?
+    private var activePreviewSignature: String?
+    private var currentRecognitionSignature: String?
+    private var lastDetectedTime: CFTimeInterval = 0
+
+    var previewFocusRect: CGRect {
+        focusRect
+    }
+
+    func start() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            configureAndStartSession()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.permissionDenied = !granted
+                    if granted {
+                        self.configureAndStartSession()
+                    }
+                }
+            }
+        default:
+            permissionDenied = true
+        }
+    }
+
+    func stop() {
+        sessionQueue.async {
+            if self.session.isRunning {
+                self.session.stopRunning()
+            }
+        }
+    }
+
+    private func configureAndStartSession() {
+        sessionQueue.async {
+            if !self.isConfigured {
+                self.configureSession()
+            }
+
+            if !self.session.isRunning {
+                self.session.startRunning()
+            }
+
+            DispatchQueue.main.async {
+                self.isSessionReady = self.isConfigured
+                self.statusText = self.isConfigured ? "Place a question inside the frame" : "Camera failed to start"
+            }
+        }
+    }
+
+    private func configureSession() {
+        guard !isConfigured else {
+            return
+        }
+
+        session.beginConfiguration()
+        session.sessionPreset = .high
+
+        defer {
+            session.commitConfiguration()
+        }
+
+        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: camera),
+              session.canAddInput(input)
+        else {
+            return
+        }
+
+        session.addInput(input)
+
+        guard session.canAddOutput(videoOutput) else {
+            return
+        }
+
+        session.addOutput(videoOutput)
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        videoOutput.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+        videoOutput.setSampleBufferDelegate(self, queue: analysisQueue)
+        videoOutput.connection(with: .video)?.videoOrientation = .portrait
+
+        isConfigured = true
+    }
+
+    private func applyDetection(_ detection: QuestionDetection?, signature: String?, previewText: String) {
+        let now = CACurrentMediaTime()
+
+        guard let detection, let signature else {
+            if now - lastDetectedTime > 0.8 {
+                detectedRect = nil
+                currentQuestionText = ""
+                activeQuestionSignature = nil
+                activePreviewSignature = nil
+                currentRecognitionSignature = nil
+                isRecognizing = false
+                statusText = isSessionReady ? "Place one full question inside the frame" : "Waiting for camera"
+                guidanceText = "Keep only the question you want to read visible, without the previous or next question entering the frame."
+            }
+            return
+        }
+
+        lastDetectedTime = now
+        detectedRect = detection.normalizedRect
+        activeQuestionSignature = signature
+        statusText = isRecognizing ? "Question locked, refreshing OCR" : "Current question locked"
+        guidanceText = "Keep this question inside the frame and the text below will stay synced with what the camera sees."
+
+        if !previewText.isEmpty && (activePreviewSignature != signature || currentQuestionText.count < 8) {
+            currentQuestionText = previewText
+            activePreviewSignature = signature
+        }
+    }
+
+    private func markRecognitionStarted(signature: String) {
+        currentRecognitionSignature = signature
+        isRecognizing = true
+    }
+
+    private func applyRecognitionResult(_ result: TextRecognitionResult?, signature: String, fallbackText: String) {
+        if currentRecognitionSignature == signature {
+            currentRecognitionSignature = nil
+            isRecognizing = false
+        }
+
+        guard activeQuestionSignature == signature else {
+            return
+        }
+
+        let refinedText = Self.normalizedQuestionText(result?.text ?? "")
+        if !refinedText.isEmpty {
+            currentQuestionText = refinedText
+            activePreviewSignature = signature
+            statusText = "Current question updated"
+            guidanceText = "Move to the next question and the text below will switch with it."
+        } else if currentQuestionText.isEmpty && !fallbackText.isEmpty {
+            currentQuestionText = fallbackText
+        }
+    }
+
+    private func maybeScheduleRecognition(
+        from pixelBuffer: CVPixelBuffer,
+        detection: QuestionDetection,
+        signature: String,
+        fallbackText: String,
+        now: CFTimeInterval
+    ) {
+        let isSameAsLast = signature == lastCompletedRecognitionSignature
+        let hasRecentSame = isSameAsLast && now - lastCompletedRecognitionTime < 1.1
+
+        guard recognitionSignatureInFlight == nil,
+              now - lastRecognitionRequestTime >= 0.45,
+              !hasRecentSame,
+              let image = makeOrientedImage(from: pixelBuffer)
+        else {
+            return
+        }
+
+        recognitionSignatureInFlight = signature
+        lastRecognitionRequestTime = now
+
+        DispatchQueue.main.async {
+            self.markRecognitionStarted(signature: signature)
+        }
+
+        Task(priority: .utility) {
+            let cropped = QuestionDetector.cropQuestion(from: image, using: detection)
+                ?? QuestionDetector.cropQuestion(
+                    from: image,
+                    normalizedRect: self.focusRect,
+                    padding: 0.03
+                )
+            let result: TextRecognitionResult?
+            if let cropped {
+                result = await TextRecognizer.recognizeText(in: cropped)
+            } else {
+                result = nil
+            }
+
+            await MainActor.run {
+                self.applyRecognitionResult(result, signature: signature, fallbackText: fallbackText)
+            }
+
+            self.analysisQueue.async {
+                if self.recognitionSignatureInFlight == signature {
+                    self.recognitionSignatureInFlight = nil
+                }
+                self.lastCompletedRecognitionSignature = signature
+                self.lastCompletedRecognitionTime = CACurrentMediaTime()
+            }
+        }
+    }
+
+    private func makeOrientedImage(from pixelBuffer: CVPixelBuffer) -> UIImage? {
+        let oriented = CIImage(cvPixelBuffer: pixelBuffer)
+            .oriented(forExifOrientation: Int32(CGImagePropertyOrientation.right.rawValue))
+
+        guard let cgImage = ciContext.createCGImage(oriented, from: oriented.extent) else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage)
+    }
+
+    private static func normalizedQuestionText(_ text: String) -> String {
+        text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private static func questionSignature(for detection: QuestionDetection) -> String {
+        let rect = detection.normalizedRect
+        let rectKey = [
+            Int((rect.midX * 18).rounded()),
+            Int((rect.midY * 18).rounded()),
+            Int((rect.width * 18).rounded()),
+            Int((rect.height * 18).rounded())
+        ]
+        .map(String.init)
+        .joined(separator: ":")
+
+        let textKey = String(normalizedQuestionText(detection.recognizedText).prefix(24))
+        return "\(rectKey)|\(textKey)"
+    }
+}
+
+extension QuestionCameraViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        let now = CACurrentMediaTime()
+        guard now - lastAnalysisTime >= 0.24 else {
+            return
+        }
+        lastAnalysisTime = now
+
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            return
+        }
+
+        let rawDetection = QuestionDetector.detectQuestion(
+            in: pixelBuffer,
+            orientation: .right,
+            focusRect: focusRect,
+            recognitionLevel: .fast
+        )
+        let detection = rawDetection?.source == .localGuideVision ? rawDetection : nil
+        let previewText = Self.normalizedQuestionText(detection?.recognizedText ?? "")
+        let signature = detection.map(Self.questionSignature(for:))
+
+        if let detection, let signature {
+            maybeScheduleRecognition(
+                from: pixelBuffer,
+                detection: detection,
+                signature: signature,
+                fallbackText: previewText,
+                now: now
+            )
+        }
+
+        DispatchQueue.main.async {
+            self.applyDetection(detection, signature: signature, previewText: previewText)
+        }
     }
 }
 
@@ -278,429 +540,5 @@ final class CameraPreviewContainerView: UIView {
         maskLayer.path = maskPath.cgPath
         frameLayer.path = rounded.cgPath
         frameLayer.strokeColor = (detectedRect == nil ? UIColor.white : UIColor.systemGreen).cgColor
-    }
-}
-
-final class QuestionCameraViewModel: NSObject, ObservableObject {
-    @Published var detectedRect: CGRect?
-    @Published var guidanceText = "Point the camera at one question. A stronger detector will refine the frame automatically."
-    @Published var isCapturing = false
-    @Published var isSessionReady = false
-    @Published var permissionDenied = false
-    @Published var lockBadgeText = "Searching"
-
-    let session = AVCaptureSession()
-    let captureProfile: QuestionCaptureProfile
-
-    var captureHandler: ((UIImage, QuestionCaptureMetadata) -> Void)?
-
-    private let sessionQueue = DispatchQueue(label: "testevowit.camera.session")
-    private let analysisQueue = DispatchQueue(label: "testevowit.camera.analysis")
-    private let processingQueue = DispatchQueue(label: "testevowit.camera.processing")
-    private let photoOutput = AVCapturePhotoOutput()
-    private let videoOutput = AVCaptureVideoDataOutput()
-    private let ciContext = CIContext(options: nil)
-
-    private var isConfigured = false
-    private var latestDetection: QuestionDetection?
-    private var localDetection: QuestionDetection?
-    private var remoteDetection: QuestionDetection?
-    private var lastLocalCandidate: QuestionDetection?
-    private var localCandidateStreak = 0
-    private var lastAnalysisTime: CFTimeInterval = 0
-    private var lastPositiveDetectionTime: CFTimeInterval = 0
-    private var lastServerRequestTime: CFTimeInterval = 0
-    private var lastServerResponseTime: CFTimeInterval = 0
-    private var serverDetectionInFlight = false
-
-    var previewFocusRect: CGRect {
-        captureProfile.focusRect
-    }
-
-    private var previewAnalysisInterval: CFTimeInterval {
-        Double(captureProfile.previewAnalysisIntervalMs) / 1000
-    }
-
-    private var serverRequestInterval: CFTimeInterval {
-        Double(captureProfile.serverRequestIntervalMs) / 1000
-    }
-
-    init(captureProfile: QuestionCaptureProfile) {
-        self.captureProfile = captureProfile
-        super.init()
-        guidanceText = "Using \(captureProfile.title) mode. Keep one question inside the guide."
-    }
-
-    func start() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            configureAndStartSession()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    self.permissionDenied = !granted
-                    if granted {
-                        self.configureAndStartSession()
-                    }
-                }
-            }
-        default:
-            permissionDenied = true
-        }
-    }
-
-    func stop() {
-        sessionQueue.async {
-            if self.session.isRunning {
-                self.session.stopRunning()
-            }
-        }
-    }
-
-    func capturePhoto() {
-        guard !isCapturing else {
-            return
-        }
-
-        guard latestDetection != nil else {
-            guidanceText = "Wait for the green question frame, then tap capture."
-            return
-        }
-
-        isCapturing = true
-        guidanceText = "Running a final crop check and starting solve..."
-
-        let settings = AVCapturePhotoSettings()
-        settings.flashMode = .off
-        settings.isHighResolutionPhotoEnabled = true
-
-        sessionQueue.async {
-            self.photoOutput.capturePhoto(with: settings, delegate: self)
-        }
-    }
-
-    private func configureAndStartSession() {
-        sessionQueue.async {
-            if !self.isConfigured {
-                self.configureSession()
-            }
-
-            if !self.session.isRunning {
-                self.session.startRunning()
-            }
-
-            DispatchQueue.main.async {
-                self.isSessionReady = self.isConfigured
-            }
-        }
-    }
-
-    private func configureSession() {
-        guard !isConfigured else {
-            return
-        }
-
-        session.beginConfiguration()
-        session.sessionPreset = .photo
-
-        defer {
-            session.commitConfiguration()
-        }
-
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let input = try? AVCaptureDeviceInput(device: camera),
-              session.canAddInput(input)
-        else {
-            return
-        }
-
-        session.addInput(input)
-
-        guard session.canAddOutput(photoOutput),
-              session.canAddOutput(videoOutput)
-        else {
-            return
-        }
-
-        session.addOutput(photoOutput)
-        session.addOutput(videoOutput)
-
-        photoOutput.maxPhotoQualityPrioritization = .quality
-
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-        videoOutput.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-        ]
-        videoOutput.setSampleBufferDelegate(self, queue: analysisQueue)
-
-        photoOutput.connection(with: .video)?.videoOrientation = .portrait
-        videoOutput.connection(with: .video)?.videoOrientation = .portrait
-
-        isConfigured = true
-    }
-
-    @MainActor
-    private func applyLocalDetection(_ detection: QuestionDetection?) {
-        localDetection = stabilizedLocalDetection(from: detection)
-        refreshDisplayedDetection()
-    }
-
-    @MainActor
-    private func applyServerDetection(_ detection: QuestionDetection?) {
-        remoteDetection = detection
-        lastServerResponseTime = CACurrentMediaTime()
-        refreshDisplayedDetection()
-    }
-
-    @MainActor
-    private func refreshDisplayedDetection() {
-        let now = CACurrentMediaTime()
-        let preferred = preferredDetection(now: now)
-
-        if let preferred {
-            lastPositiveDetectionTime = now
-            latestDetection = preferred
-            detectedRect = previewFocusRect
-
-            if preferred.source == .serverFocusedLayout || preferred.source == .serverLayout {
-                lockBadgeText = "Single question locked"
-                guidanceText = "The strong detector confirmed one question inside the guide. If it looks right, tap capture."
-            } else if preferred.source == .localGuideVision {
-                lockBadgeText = "Guide locked"
-                guidanceText = "The preview detector found one question inside the guide. Hold steady for a final cloud check."
-            } else if remoteDetection == nil {
-                lockBadgeText = "Preview lock"
-                guidanceText = "The guide looks usable. Hold steady while the stronger detector confirms it."
-            } else {
-                lockBadgeText = "Refining"
-                guidanceText = "Keep the same framing. The stronger detector is checking the guide area."
-            }
-        } else if localCandidateStreak > 0 {
-            detectedRect = nil
-            lockBadgeText = "Stabilizing"
-            guidanceText = "Hold the phone steady. The guide needs one more clean frame before it locks."
-        } else if now - lastPositiveDetectionTime > 0.9 {
-            latestDetection = nil
-            detectedRect = nil
-            lockBadgeText = "Searching"
-            guidanceText = "Move closer and keep just one question inside the center frame."
-        }
-    }
-
-    @MainActor
-    private func preferredDetection(now: CFTimeInterval) -> QuestionDetection? {
-        if let remoteDetection, now - lastServerResponseTime <= 2.4 {
-            return remoteDetection
-        }
-        return localDetection
-    }
-
-    private func maybeScheduleServerDetection(from pixelBuffer: CVPixelBuffer, localDetection: QuestionDetection?) {
-        let now = CACurrentMediaTime()
-        let hasRecentRemote = now - lastServerResponseTime < 1.8
-
-        guard !serverDetectionInFlight,
-              now - lastServerRequestTime >= serverRequestInterval,
-              localDetection != nil || !hasRecentRemote,
-              let jpegData = makePreviewJPEGData(from: pixelBuffer)
-        else {
-            return
-        }
-
-        serverDetectionInFlight = true
-        lastServerRequestTime = now
-
-        Task(priority: .utility) {
-            let detection: QuestionDetection?
-            do {
-                let response = try await APIClient().detectQuestion(
-                    in: jpegData,
-                    focusRect: QuestionDetector.toServerRect(self.previewFocusRect)
-                )
-                detection = QuestionDetector.detectQuestion(from: response)
-            } catch {
-                detection = nil
-            }
-
-            await MainActor.run {
-                self.serverDetectionInFlight = false
-                self.applyServerDetection(detection)
-            }
-        }
-    }
-
-    private func makePreviewJPEGData(from pixelBuffer: CVPixelBuffer) -> Data? {
-        let oriented = CIImage(cvPixelBuffer: pixelBuffer)
-            .oriented(forExifOrientation: Int32(CGImagePropertyOrientation.right.rawValue))
-        let extent = oriented.extent.integral
-        let longest = max(extent.width, extent.height)
-        let scale = longest > 0 ? min(1, captureProfile.previewJpegMaxDimension / longest) : 1
-        let resized = scale < 1
-            ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-            : oriented
-
-        guard let cgImage = ciContext.createCGImage(resized, from: resized.extent) else {
-            return nil
-        }
-
-        return UIImage(cgImage: cgImage).jpegData(compressionQuality: captureProfile.previewJpegCompression)
-    }
-
-    private func detectQuestionViaServer(
-        in image: UIImage,
-        focusRect: ServerNormalizedRect?
-    ) async -> QuestionDetection? {
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            return nil
-        }
-
-        do {
-            let response = try await APIClient().detectQuestion(in: imageData, focusRect: focusRect)
-            return QuestionDetector.detectQuestion(from: response)
-        } catch {
-            return nil
-        }
-    }
-
-    @MainActor
-    private func stabilizedLocalDetection(from detection: QuestionDetection?) -> QuestionDetection? {
-        guard let detection else {
-            lastLocalCandidate = nil
-            localCandidateStreak = 0
-            return nil
-        }
-
-        if let previous = lastLocalCandidate,
-           isSimilar(previous.normalizedRect, detection.normalizedRect) {
-            localCandidateStreak += 1
-        } else {
-            localCandidateStreak = 1
-        }
-
-        lastLocalCandidate = detection
-        return localCandidateStreak >= captureProfile.lockFramesRequired ? detection : nil
-    }
-
-    private func isSimilar(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
-        abs(lhs.midX - rhs.midX) <= 0.08
-            && abs(lhs.midY - rhs.midY) <= 0.08
-            && abs(lhs.width - rhs.width) <= 0.12
-            && abs(lhs.height - rhs.height) <= 0.12
-    }
-}
-
-extension QuestionCameraViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
-    func captureOutput(
-        _ output: AVCaptureOutput,
-        didOutput sampleBuffer: CMSampleBuffer,
-        from connection: AVCaptureConnection
-    ) {
-        guard !isCapturing else {
-            return
-        }
-
-        let now = CACurrentMediaTime()
-        guard now - lastAnalysisTime >= previewAnalysisInterval else {
-            return
-        }
-        lastAnalysisTime = now
-
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            return
-        }
-
-        let rawDetection = QuestionDetector.detectQuestion(
-            in: pixelBuffer,
-            orientation: .right,
-            focusRect: previewFocusRect,
-            recognitionLevel: .fast
-        )
-        let detection = rawDetection?.source == .localGuideVision ? rawDetection : nil
-
-        maybeScheduleServerDetection(from: pixelBuffer, localDetection: detection)
-
-        DispatchQueue.main.async {
-            self.applyLocalDetection(detection)
-        }
-    }
-}
-
-extension QuestionCameraViewModel: AVCapturePhotoCaptureDelegate {
-    func photoOutput(
-        _ output: AVCapturePhotoOutput,
-        didFinishProcessingPhoto photo: AVCapturePhoto,
-        error: Error?
-    ) {
-        guard error == nil,
-              let data = photo.fileDataRepresentation(),
-              let image = UIImage(data: data)
-        else {
-            DispatchQueue.main.async {
-                self.isCapturing = false
-                self.guidanceText = "Capture failed. Try again."
-            }
-            return
-        }
-
-        let previewDetection = latestDetection
-        let originalWidth = image.cgImage?.width
-        let originalHeight = image.cgImage?.height
-
-        processingQueue.async {
-            let focusRect = QuestionDetector.toServerRect(self.previewFocusRect)
-            let focusedLocalResult = QuestionDetector.detectQuestion(
-                in: image,
-                focusRect: self.previewFocusRect,
-                recognitionLevel: .accurate
-            )
-            let focusedLocal = focusedLocalResult?.source == .localGuideVision ? focusedLocalResult : nil
-
-            Task(priority: .userInitiated) {
-                let strongDetection = await self.detectQuestionViaServer(in: image, focusRect: focusRect)
-                let chosen = strongDetection ?? focusedLocal ?? previewDetection
-                let cropped = chosen.flatMap {
-                    QuestionDetector.cropQuestion(from: image, using: $0)
-                } ?? QuestionDetector.cropQuestion(
-                    from: image,
-                    normalizedRect: self.previewFocusRect,
-                    padding: 0.04
-                ) ?? image
-
-                var warnings: [String] = []
-                if strongDetection == nil {
-                    warnings.append("server_final_detection_unavailable")
-                }
-                if chosen?.source == .localVision {
-                    warnings.append("crop_from_local_detector")
-                }
-                if chosen?.source == .localGuideVision {
-                    warnings.append("crop_from_local_focus_detector")
-                }
-                if chosen == nil {
-                    warnings.append("fell_back_to_guide_frame_crop")
-                }
-
-                let metadata = QuestionCaptureMetadata(
-                    captureProfile: self.captureProfile,
-                    cropApplied: true,
-                    cropSource: chosen?.source ?? .guideFrame,
-                    cropCoverage: chosen?.coverage ?? Double(self.previewFocusRect.width * self.previewFocusRect.height),
-                    focusRect: focusRect,
-                    lockFramesRequired: self.captureProfile.lockFramesRequired,
-                    previewAnalysisIntervalMs: self.captureProfile.previewAnalysisIntervalMs,
-                    serverRequestIntervalMs: self.captureProfile.serverRequestIntervalMs,
-                    originalImageWidth: originalWidth,
-                    originalImageHeight: originalHeight,
-                    previewDetectionSource: previewDetection?.source,
-                    warnings: warnings
-                )
-
-                await MainActor.run {
-                    self.isCapturing = false
-                    self.captureHandler?(cropped, metadata)
-                }
-            }
-        }
     }
 }

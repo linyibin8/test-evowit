@@ -5,7 +5,7 @@ settings:
   base:
     SWIFT_VERSION: 5.0
     MARKETING_VERSION: 1.0.0
-    CURRENT_PROJECT_VERSION: 9
+    CURRENT_PROJECT_VERSION: 10
     DEVELOPMENT_TEAM: 76PHSCHPCK
     CODE_SIGN_STYLE: Automatic
   configs:
@@ -44,9 +44,4 @@ targets:
         CFBundleDisplayName: test-evowit
         UILaunchScreen: {}
         NSCameraUsageDescription: Allow camera access to capture homework questions.
-        NSPhotoLibraryUsageDescription: Allow photo access to import homework images.
-        NSPhotoLibraryAddUsageDescription: Allow photo library access to save solved screenshots.
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
         ITSAppUsesNonExemptEncryption: false
-        BACKEND_BASE_URL: http://120.197.118.22:21080
