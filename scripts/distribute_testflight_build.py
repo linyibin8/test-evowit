@@ -29,29 +29,51 @@ def make_token(key_id: str, issuer_id: str, key_path: Path) -> str:
     )
 
 
+class BuildMatchNotFoundError(RuntimeError):
+    pass
+
+
 class AppStoreClient:
-    def __init__(self, token: str):
+    def __init__(self, key_id: str, issuer_id: str, key_path: Path):
+        self.key_id = key_id
+        self.issuer_id = issuer_id
+        self.key_path = key_path
         self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            }
+        self.session.headers.update({"Content-Type": "application/json"})
+        self.token_expires_at = 0
+
+    def refresh_token(self):
+        self.session.headers["Authorization"] = (
+            f"Bearer {make_token(self.key_id, self.issuer_id, self.key_path)}"
         )
+        # Refresh one minute ahead of the token's 10-minute lifetime.
+        self.token_expires_at = time.time() + 540
+
+    def ensure_token(self):
+        if time.time() >= self.token_expires_at:
+            self.refresh_token()
 
     def request(self, method: str, path: str, *, params=None, payload=None, allow_404=False):
-        response = self.session.request(
-            method,
-            f"{API_BASE}{path}",
-            params=params,
-            data=json.dumps(payload) if payload is not None else None,
-            timeout=30,
-        )
-        if allow_404 and response.status_code == 404:
-            return None
-        if response.status_code >= 400:
-            raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text}")
-        return response.json() if response.text else {}
+        retried_after_refresh = False
+
+        while True:
+            self.ensure_token()
+            response = self.session.request(
+                method,
+                f"{API_BASE}{path}",
+                params=params,
+                data=json.dumps(payload) if payload is not None else None,
+                timeout=30,
+            )
+            if allow_404 and response.status_code == 404:
+                return None
+            if response.status_code == 401 and not retried_after_refresh:
+                self.refresh_token()
+                retried_after_refresh = True
+                continue
+            if response.status_code >= 400:
+                raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text}")
+            return response.json() if response.text else {}
 
     def get_app(self, bundle_id: str):
         data = self.request(
@@ -193,12 +215,12 @@ def choose_build(builds_payload: dict, build_version: Optional[str], short_versi
         return build, pre_version
 
     if build_version or short_version:
-        raise RuntimeError(
+        raise BuildMatchNotFoundError(
             f"No build matched version={build_version!r} short_version={short_version!r}"
         )
 
     if not candidates:
-        raise RuntimeError("No builds found for app.")
+        raise BuildMatchNotFoundError("No builds found for app.")
 
     build, _, pre_version = candidates[0]
     return build, pre_version
@@ -220,16 +242,17 @@ def wait_for_build_processing(
         try:
             builds_payload = client.list_builds(app_id)
             build, pre_version = choose_build(builds_payload, build_version, short_version)
-        except RuntimeError as error:
+        except BuildMatchNotFoundError as error:
             if not (build_version or short_version):
                 raise
             if time.time() >= deadline:
-                raise RuntimeError(
+                raise BuildMatchNotFoundError(
                     f"Timed out waiting for build version={build_version!r} short_version={short_version!r} to appear"
                 ) from error
             if not last_missing:
                 print(
-                    f"Waiting for build version={build_version!r} shortVersion={short_version!r} to appear..."
+                    f"Waiting for build version={build_version!r} shortVersion={short_version!r} to appear...",
+                    flush=True,
                 )
                 last_missing = True
             time.sleep(interval)
@@ -238,7 +261,7 @@ def wait_for_build_processing(
         last_missing = False
         snapshot = describe_build(build, pre_version)
         if snapshot != last_snapshot:
-            print("Selected build:", json.dumps(snapshot, ensure_ascii=False))
+            print("Selected build:", json.dumps(snapshot, ensure_ascii=False), flush=True)
             last_snapshot = snapshot
 
         state = snapshot.get("processingState")
@@ -253,7 +276,7 @@ def wait_for_build_processing(
                 f"Timed out waiting for build version={snapshot.get('version')} shortVersion={snapshot.get('shortVersion')} to reach VALID (last state={state})"
             )
 
-        print(f"Waiting for build processingState=VALID (current={state})...")
+        print(f"Waiting for build processingState=VALID (current={state})...", flush=True)
         time.sleep(interval)
 
 
@@ -273,7 +296,7 @@ def main() -> int:
     issuer_id = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
     key_path = Path(os.environ["APP_STORE_CONNECT_KEY_PATH"])
 
-    client = AppStoreClient(make_token(key_id, issuer_id, key_path))
+    client = AppStoreClient(key_id, issuer_id, key_path)
 
     app = client.get_app(args.bundle_id)
     if not app:

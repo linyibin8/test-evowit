@@ -69,4 +69,4 @@ jobs:
             args+=(--group-names "${TESTFLIGHT_GROUPS}")
           fi
           args+=(--wait-for-processing --wait-timeout 1800)
-          python3 "${args[@]}"
+          python3 -u "${args[@]}"

@@ -104,7 +104,7 @@ jobs:
             echo "Failed to read CURRENT_PROJECT_VERSION or MARKETING_VERSION from ios/project.yml" >&2
             exit 1
           fi
-          python3 scripts/distribute_testflight_build.py \
+          python3 -u scripts/distribute_testflight_build.py \
             --bundle-id com.we555.test-evowit \
             --build-version "${build_version}" \
             --short-version "${short_version}" \
