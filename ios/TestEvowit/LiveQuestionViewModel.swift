@@ -16,6 +16,7 @@ final class LiveQuestionViewModel: NSObject, ObservableObject {
     @Published var detectedRect: CGRect?
     @Published var isRefreshing = false
     @Published var currentSource: QuestionResultSource?
+    @Published var previewImageSize: CGSize = .zero
 
     let session = AVCaptureSession()
 
@@ -496,6 +497,7 @@ extension LiveQuestionViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastPreviewAnalysisAt = now
 
         let frameImage = makeFrameImage(from: pixelBuffer)
+        let frameSize = CGSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
         let detected = QuestionSegmentationEngine.detectBestQuestion(
             in: pixelBuffer,
             orientation: .up,
@@ -509,6 +511,7 @@ extension LiveQuestionViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         DispatchQueue.main.async {
             self.latestFrameImage = frameImage
+            self.previewImageSize = frameSize
             self.publishLiveCandidate(candidate: detected, stable: stable, frameImage: frameImage)
         }
     }

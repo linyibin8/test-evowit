@@ -66,7 +66,8 @@ struct LiveQuestionView: View {
             CameraPreviewView(
                 session: viewModel.session,
                 detectedRect: viewModel.detectedRect,
-                fallbackRect: viewModel.previewFocusRect
+                fallbackRect: viewModel.previewFocusRect,
+                imageSize: viewModel.previewImageSize
             )
             .frame(height: 320)
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
